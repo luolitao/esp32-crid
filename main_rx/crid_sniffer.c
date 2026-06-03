@@ -15,8 +15,7 @@
 #include "esp_netif.h"
 #include "esp_wifi_types.h"
 #include "crid_sniffer.h"
-
-static const char *TAG = "RID_SNIFF";
+#include "crid_json.h"
 
 /* ---- 模块内部状态 ---- */
 
@@ -101,12 +100,12 @@ static void wifi_sniffer_cb(void *buf, wifi_promiscuous_pkt_type_t type) {
                 msg.ssid_len = ssid_len;
 
                 // 提取 Vendor Specific 数据
-                // 格式: OUI(3) + OUI_Type(1) + MessageCounter(1) + Payload
-                // 跳过 ID + Len + OUI(3) + OUI_Type(1) + Counter(1) = 7 字节
-                // data[0] 为 Message Pack 头或单消息头
-                // parser 通过 decodeMessageType(data[0]) 动态处理
-                uint16_t data_offset = offset + 7;
-                uint16_t vendor_data_len = ie_length - 5;  // OUI(3) + Type(1) + Counter(1)
+                // 格式: OUI(3) + OUI_Type(1) + ODID_service_info
+                //   ODID_service_info: [message_counter(1)] [ODID_MessagePack_encoded(...)]
+                // 跳过 ID + Len + OUI(3) + OUI_Type(1) = 6 字节
+                // parser 使用 odid_message_process_pack() 解析
+                uint16_t data_offset = offset + 6;
+                uint16_t vendor_data_len = ie_length - 4;  // OUI(3) + Type(1)
                 msg.data_len = (vendor_data_len < sizeof(msg.data)) ? vendor_data_len : sizeof(msg.data);
                 memcpy(msg.data, &ie_start[data_offset], msg.data_len);
 
@@ -135,9 +134,9 @@ static void wifi_sniffer_cb(void *buf, wifi_promiscuous_pkt_type_t type) {
                     memcpy(msg.ssid, ssid, ssid_len);
                     msg.ssid_len = ssid_len;
 
-                    // 提取 Vendor IE 数据（跳过 OUI + Type + Counter，保留全部）
-                    uint16_t data_offset = offset + 7;
-                    uint16_t vendor_data_len = ie_length - 5;
+                    // 提取 Vendor IE 数据（跳过 OUI + Type，保留全部）
+                    uint16_t data_offset = offset + 6;
+                    uint16_t vendor_data_len = ie_length - 4;
                     msg.data_len = (vendor_data_len < sizeof(msg.data)) ? vendor_data_len : sizeof(msg.data);
                     memcpy(msg.data, &ie_start[data_offset], msg.data_len);
 
@@ -179,14 +178,17 @@ static void wifi_sniffer_cb(void *buf, wifi_promiscuous_pkt_type_t type) {
 /* ---- 信道保持任务 ---- */
 
 static void channel_hold_task(void *pvParameter) {
-    ESP_LOGI(TAG, "Channel hold task started, locked to channel %d", FIXED_CHANNEL);
+    char msg[64];
+    snprintf(msg, sizeof(msg), "Channel hold started, locked to channel %d", FIXED_CHANNEL);
+    json_debug("RID_SNIFF", msg);
 
     vTaskDelay(pdMS_TO_TICKS(2000));
 
     while (1) {
         esp_err_t ret = esp_wifi_set_channel(FIXED_CHANNEL, WIFI_SECOND_CHAN_NONE);
         if (ret != ESP_OK) {
-            ESP_LOGW(TAG, "Failed to set channel %d: %s", FIXED_CHANNEL, esp_err_to_name(ret));
+            snprintf(msg, sizeof(msg), "Failed to set channel %d: %s", FIXED_CHANNEL, esp_err_to_name(ret));
+            json_warning("RID_SNIFF", msg);
         }
         vTaskDelay(pdMS_TO_TICKS(30000));
     }
@@ -204,11 +206,12 @@ sniffer_stats_t *crid_sniffer_get_stats(void) {
 
 esp_err_t crid_sniffer_init(void) {
     memset(&g_stats, 0, sizeof(g_stats));
+    char err[64];
 
     // 1. 创建消息队列
     g_sniffer_queue = xQueueCreate(SNIFFER_QUEUE_SIZE, sizeof(sniffer_msg_t));
     if (g_sniffer_queue == NULL) {
-        ESP_LOGE(TAG, "Failed to create sniffer queue!");
+        json_error("RID_SNIFF", "Failed to create sniffer queue!");
         return ESP_ERR_NO_MEM;
     }
 
@@ -216,25 +219,28 @@ esp_err_t crid_sniffer_init(void) {
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_err_t ret = esp_wifi_init(&cfg);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Wi-Fi init failed: %s", esp_err_to_name(ret));
+        snprintf(err, sizeof(err), "Wi-Fi init failed: %s", esp_err_to_name(ret));
+        json_error("RID_SNIFF", err);
         return ret;
     }
 
     // 3. 设置 NULL 模式
     ret = esp_wifi_set_mode(WIFI_MODE_NULL);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Wi-Fi mode failed: %s", esp_err_to_name(ret));
+        snprintf(err, sizeof(err), "Wi-Fi mode failed: %s", esp_err_to_name(ret));
+        json_error("RID_SNIFF", err);
         return ret;
     }
 
     ret = esp_wifi_start();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Wi-Fi start failed: %s", esp_err_to_name(ret));
+        snprintf(err, sizeof(err), "Wi-Fi start failed: %s", esp_err_to_name(ret));
+        json_error("RID_SNIFF", err);
         return ret;
     }
 
     // 4. 设置混杂模式
-    ESP_ERROR_CHECK(esp_wifi_set_promiscuous_rx_cb(wifi_sniffer_cb));
+    esp_wifi_set_promiscuous_rx_cb(wifi_sniffer_cb);
 
     // 设置 filter：接收所有帧（不过滤）
     wifi_promiscuous_filter_t filter = {
@@ -244,19 +250,21 @@ esp_err_t crid_sniffer_init(void) {
 
     ret = esp_wifi_set_promiscuous(true);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Promiscuous mode failed: %s", esp_err_to_name(ret));
+        snprintf(err, sizeof(err), "Promiscuous mode failed: %s", esp_err_to_name(ret));
+        json_error("RID_SNIFF", err);
         return ret;
     }
 
     // 5. 锁定监听信道
     ret = esp_wifi_set_channel(FIXED_CHANNEL, WIFI_SECOND_CHAN_NONE);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Set channel failed: %s", esp_err_to_name(ret));
+        snprintf(err, sizeof(err), "Set channel failed: %s", esp_err_to_name(ret));
+        json_error("RID_SNIFF", err);
         return ret;
     }
 
-    ESP_LOGI(TAG, "Wi-Fi monitor mode enabled");
-    ESP_LOGI(TAG, "Promiscuous mode: ON, channel: %d", FIXED_CHANNEL);
+    snprintf(err, sizeof(err), "Wi-Fi monitor mode enabled, promiscuous ON, channel %d", FIXED_CHANNEL);
+    json_debug("RID_SNIFF", err);
 
     return ESP_OK;
 }

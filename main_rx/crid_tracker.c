@@ -5,8 +5,7 @@
 #include <string.h>
 #include "esp_log.h"
 #include "crid_tracker.h"
-
-static const char *TAG = "RID_TRACK";
+#include "crid_json.h"
 
 /* ---- 模块内部状态 ---- */
 
@@ -28,7 +27,7 @@ void crid_tracker_init(void) {
 
     g_tracker_mutex = xSemaphoreCreateMutex();
     if (g_tracker_mutex == NULL) {
-        ESP_LOGE(TAG, "Failed to create tracker mutex!");
+        json_error("RID_TRACK", "Failed to create tracker mutex!");
     }
 }
 
@@ -79,12 +78,8 @@ void crid_tracker_cleanup(uint32_t timeout_ms) {
         if (!g_uavs[i].active) continue;
         uint32_t age_ms = now - g_uavs[i].last_seen_ms;
         if (age_ms > timeout_ms) {
+            json_uav_timeout(g_uavs[i].mac);
             g_uavs[i].active = false;
-            char mac_str[18];
-            snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
-                     g_uavs[i].mac[0], g_uavs[i].mac[1], g_uavs[i].mac[2],
-                     g_uavs[i].mac[3], g_uavs[i].mac[4], g_uavs[i].mac[5]);
-            ESP_LOGI(TAG, "[%s] removed (timeout)", mac_str);
         }
     }
 }

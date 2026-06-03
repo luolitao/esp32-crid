@@ -9,7 +9,6 @@ Maintainer:
 Gabriel Cox
 gabriel.c.cox@intel.com
 */
-#include <inttypes.h>
 
 #include "opendroneid.h"
 #include <math.h>
@@ -1406,7 +1405,7 @@ void printAuth_data(ODID_Auth_data *Auth)
     if (Auth->DataPage == 0) {
         const char ODID_Auth_data_format[] =
             "AuthType: %d\nDataPage: %d\nLastPageIndex: %d\nLength: %d\n"\
-            "Timestamp: %" PRIu32 "\nAuthData: ";
+            "Timestamp: %u\nAuthData: ";
         printf(ODID_Auth_data_format, Auth->AuthType, Auth->DataPage,
                Auth->LastPageIndex, Auth->Length, Auth->Timestamp);
         for (int i = 0; i < ODID_AUTH_PAGE_ZERO_DATA_SIZE; i++)
@@ -1446,7 +1445,7 @@ void printSystem_data(ODID_System_data *System_data)
     const char ODID_System_data_format[] = "Operator Location Type: %d\n"
         "Classification Type: %d\nLat/Lon: %.7f, %.7f\n"
         "Area Count, Radius, Ceiling, Floor: %d, %d, %.2f, %.2f\n"
-        "Category EU: %d, Class EU: %d, Altitude: %.2f, Timestamp: %" PRIu32 "\n";
+        "Category EU: %d, Class EU: %d, Altitude: %.2f, Timestamp: %u\n";
     printf(ODID_System_data_format, System_data->OperatorLocationType,
         System_data->ClassificationType,
         System_data->OperatorLatitude, System_data->OperatorLongitude,

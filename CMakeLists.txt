@@ -25,8 +25,9 @@ endif()
 
 message(STATUS ">>> Building target: ${MAIN_DIR}")
 
-# 强制将 MAIN_DIR 设为主组件目录
-set(EXTRA_COMPONENT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/${MAIN_DIR})
+# 强制将 MAIN_DIR 设为主组件目录，并添加 components 目录
+set(EXTRA_COMPONENT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/${MAIN_DIR}
+                         ${CMAKE_CURRENT_SOURCE_DIR}/components)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(remoteid_scanner)

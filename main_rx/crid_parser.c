@@ -1,73 +1,115 @@
 /**
  * crid_parser.c — Remote ID 消息解析模块
  *
- * 使用 opendroneid 库解码，支持：
- *   - Message Pack 格式 (ASTM F3411-22)
+ * 使用 opendroneid 库的 odid_wifi 接口解码，支持：
+ *   - ASTM F3411 ODID_service_info 格式 (Message Counter + Message Pack)
+ *   - GB 42590-2023 国标格式 (Message Counter + 3字节管理信息 + 消息)
  *   - 单消息格式 (每个 IE 携带一条 25 字节消息)
  *
- * 数据布局 (data[0] 开始，sniffer 已跳过 ID+Len+OUI+OUI_Type+Counter=7 字节)：
- *   ASTM F3411:      [MessagePackHeader(0xF2)] [SingleMsgSize(25)] [MsgCount] [messages...]
- *   单消息格式:       [SingleMsgHeader(0x02~0x52)] [25-byte message]
+ * 数据布局 (data[0] 开始，sniffer 已跳过 ID+Len+OUI+OUI_Type=6 字节)：
  *
- * 策略：优先检查 data[0] 是否为 PACKED header；否则尝试单消息格式。
+ *   ASTM 格式:
+ *     [MessageCounter(1)] [MessagePack: 0xF2|ProtoVer(1)] [SingleMsgSize(1)] [MsgCount(1)] [messages...]
+ *
+ *   GB 42590-2023 国标格式:
+ *     [MessageCounter(1)] [0xF1(1)] [SingleMsgSize(1)] [MsgCount(1)] [messages...]
+ *     注意：国标 message_counter 之后有 3 字节管理信息 (0xF1 + SingleMsgSize + MsgCount)，
+ *           然后才是消息体。与 ASTM 的区别是 Message Pack 的第一个字节：0xF1 vs 0xF2。
+ *
+ *   单消息格式:
+ *     [SingleMsgHeader(0x02~0x52)] [25-byte message]
+ *
+ * 策略：优先用 odid_message_process_pack() 解析 Packed 格式（ASTM 0xF2）；
+ *       再检测国标格式（0xF1）；否则尝试单消息格式。
  */
 
-#include "esp_log.h"
 #include <string.h>
+#include "esp_log.h"
 #include "opendroneid.h"
+#include "odid_wifi.h"
 #include "crid_parser.h"
-
-static const char *TAG = "RID_PARSE";
-
-// 尝试以 data[0] 为起点解析（静默失败，由调用者决定是否告警）
-static int try_decode(uav_track_t *uav, const uint8_t *data, uint8_t len) {
-    if (len < 1) return ODID_FAIL;
-
-    ODID_messagetype_t msg_type = decodeMessageType(data[0]);
-
-    if (msg_type == ODID_MESSAGETYPE_PACKED) {
-        if (len < 28) return ODID_FAIL;
-        ODID_MessagePack_encoded *pack = (ODID_MessagePack_encoded *)data;
-        // 快速验证：SingleMessageSize 必须是 25（标准 RID 消息大小）
-        if (pack->SingleMessageSize != ODID_MESSAGE_SIZE) return ODID_FAIL;
-        int ret = decodeMessagePack(&uav->uas_data, pack);
-        if (ret != ODID_SUCCESS) {
-            ESP_LOGW(TAG, "Message Pack decode failed (err=%d) SingleMsgSize=%u MsgPackSize=%u",
-                     ret, pack->SingleMessageSize, pack->MsgPackSize);
-        }
-        
-        return ret;
-    } else if (msg_type >= ODID_MESSAGETYPE_BASIC_ID && msg_type <= ODID_MESSAGETYPE_OPERATOR_ID) {
-        if (len < ODID_MESSAGE_SIZE) return ODID_FAIL;
-        int ret = decodeOpenDroneID(&uav->uas_data, (uint8_t *)data);
-        // 不在此处打印单消息失败告警——调用者知道上下文（可能是 Counter 误判）
-        return ret;
-    }
-    return ODID_FAIL;
-}
+#include "crid_json.h"
 
 void crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t len) {
     if (len < 1) return;
 
-    // 策略 1: 检查 data[0] 是否为 PACKED header (0xF2)
-    //         ASTM F3411 格式，数据直接以 Message Pack 开始
-    ODID_messagetype_t t0 = decodeMessageType(data[0]);
-    if (t0 == ODID_MESSAGETYPE_PACKED) {
-        if (try_decode(uav, data, len) == ODID_SUCCESS) {
-            uav->last_seen_ms = esp_log_timestamp();
-            uav->msg_count++;
-            
-            return;
+    // 策略 1: 作为 ODID_service_info 解析 (ASTM 格式)
+    //         格式: [MessageCounter(1)] [ODID_MessagePack_encoded(...)]
+    //         Message Pack 第一个字节高4位 = 0xF (ODID_MESSAGETYPE_PACKED = 0xF)
+    //         使用 opendroneid 库的 odid_message_process_pack()
+    if (len > sizeof(uint8_t)) {
+        struct ODID_service_info *si = (struct ODID_service_info *)data;
+        ODID_messagetype_t t0 = decodeMessageType(si->odid_message_pack[0].MessageType);
+        if (t0 == ODID_MESSAGETYPE_PACKED) {
+            // 计算 Pack 大小 (MsgPackSize 表示消息数量，每条 25 字节)
+            uint8_t msg_count = si->odid_message_pack[0].MsgPackSize;
+            size_t pack_size = sizeof(ODID_MessagePack_encoded)
+                             - ODID_MESSAGE_SIZE * (ODID_PACK_MAX_MESSAGES - msg_count);
+            if (len >= sizeof(si->message_counter) + pack_size) {
+                int ret = odid_message_process_pack(&uav->uas_data,
+                                                     (uint8_t *)si->odid_message_pack,
+                                                     len - sizeof(si->message_counter));
+                if (ret > 0) {
+                    uav->last_seen_ms = esp_log_timestamp();
+                    uav->msg_count++;
+                    return;
+                }
+            }
         }
     }
 
-    // 策略 2 (fallback): 尝试 data[0] 作为单消息
+    // 策略 2: GB 42590-2023 国标格式
+    //         格式: [MessageCounter(1)] [0xF1(1)] [SingleMsgSize(1)] [MsgCount(1)] [messages...]
+    //         前面 3 字节管理信息 (0xF1 + SingleMsgSize + MsgCount) 不属于 Message Pack，
+    //         需要跳过这 3 字节，然后构造 ODID_MessagePack_encoded 头部再解析。
+    if (len >= 1 + 1 + 1 + 1) {  // counter + 0xF1 + size + count
+        uint8_t gb_magic = data[1];  // data[0] = message_counter, data[1] = 0xF1
+        if (gb_magic == 0xF1) {
+            uint8_t gb_single_msg_size = data[2];
+            uint8_t gb_msg_count = data[3];
+            if (gb_single_msg_size == ODID_MESSAGE_SIZE && gb_msg_count >= 1 && gb_msg_count <= ODID_PACK_MAX_MESSAGES) {
+                // 构造 ASTM 兼容的 ODID_MessagePack_encoded 头部
+                // ODID_MessagePack_encoded:
+                //   Byte 0: [MessageType(4)][ProtoVersion(4)]
+                //   Byte 1: SingleMessageSize
+                //   Byte 2: MsgPackSize
+                //   Byte 3+: Messages[]
+                // 国标消息从 data[4] 开始
+                const uint8_t *gb_messages = &data[4];
+                uint8_t gb_msg_data_len = len - 4;
+                uint8_t gb_expected_len = gb_msg_count * ODID_MESSAGE_SIZE;
+                if (gb_msg_data_len >= gb_expected_len) {
+                    // 构建临时 buffer，前面放 ASTM 兼容头部，后面放消息数据
+                    uint8_t tmp_pack[sizeof(ODID_MessagePack_encoded)];
+                    size_t tmp_pack_size = sizeof(ODID_MessagePack_encoded)
+                                         - ODID_MESSAGE_SIZE * (ODID_PACK_MAX_MESSAGES - gb_msg_count);
+                    if (tmp_pack_size >= 3 + gb_expected_len && tmp_pack_size <= sizeof(tmp_pack)) {
+                        tmp_pack[0] = (ODID_MESSAGETYPE_PACKED << 4) | 0x01; // MessageType=PACKED, ProtoVer=1
+                        tmp_pack[1] = ODID_MESSAGE_SIZE;
+                        tmp_pack[2] = gb_msg_count;
+                        memcpy(&tmp_pack[3], gb_messages, gb_expected_len);
+                        int ret = odid_message_process_pack(&uav->uas_data, tmp_pack, tmp_pack_size);
+                        if (ret > 0) {
+                            uav->last_seen_ms = esp_log_timestamp();
+                            uav->msg_count++;
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 策略 3 (fallback): 尝试 data[0] 作为单消息头
+    ODID_messagetype_t t0 = decodeMessageType(data[0]);
     if (t0 >= ODID_MESSAGETYPE_BASIC_ID && t0 <= ODID_MESSAGETYPE_OPERATOR_ID) {
-        if (try_decode(uav, data, len) == ODID_SUCCESS) {
-            uav->last_seen_ms = esp_log_timestamp();
-            uav->msg_count++;
-            
-            return;
+        if (len >= ODID_MESSAGE_SIZE) {
+            int ret = decodeOpenDroneID(&uav->uas_data, (uint8_t *)data);
+            if (ret == ODID_SUCCESS) {
+                uav->last_seen_ms = esp_log_timestamp();
+                uav->msg_count++;
+                return;
+            }
         }
     }
 
@@ -75,8 +117,7 @@ void crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t len) {
     static uint32_t s_fail_count = 0;
     s_fail_count++;
     if ((s_fail_count & 0x1F) == 0) {
-        ESP_LOGW(TAG, "All decode strategies failed: [0]=0x%02X [1]=0x%02X len=%u",
-                 data[0], (len > 1 ? data[1] : 0), len);
+        json_decode_fail(data[0], (len > 1 ? data[1] : 0), len);
     }
 }
 

@@ -21,6 +21,7 @@
 #include "nvs_flash.h"
 #include "esp_netif.h"
 #include "esp_event.h"
+#include "driver/uart.h"
 #include "opendroneid.h"
 
 #include "crid_rx_types.h"
@@ -28,15 +29,56 @@
 #include "crid_parser.h"
 #include "crid_tracker.h"
 #include "crid_display.h"
+#include "crid_json.h"
 
-static const char *TAG = "RID_MAIN";
+/* ================================================================
+ * UART 数据端口配置
+ *
+ * 硬件连接：ESP32-S3 UART1
+ *   - TX: GPIO17
+ *   - RX: GPIO18 (不使用)
+ *   - 波特率: 115200
+ *
+ * 此端口仅输出 UAV 解析数据（uav_discovery / uav_update / uav_status
+ * / uav_timeout / uav_detail / status），方便上位机接收纯净数据流。
+ *
+ * 调试/告警/错误/启动信息仍通过 USB CDC (stdout) 输出。
+ * ================================================================ */
+
+#define UART_DATA_PORT_NUM      UART_NUM_1
+#define UART_DATA_TX_PIN        17
+#define UART_DATA_RX_PIN        18
+#define UART_DATA_BAUD_RATE     115200
+#define UART_DATA_BUF_SIZE      1024
+
+static void uart_data_port_init(void) {
+    uart_config_t uart_config = {
+        .baud_rate = UART_DATA_BAUD_RATE,
+        .data_bits = UART_DATA_8_BITS,
+        .parity    = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+    };
+    uart_param_config(UART_DATA_PORT_NUM, &uart_config);
+    uart_set_pin(UART_DATA_PORT_NUM, UART_DATA_TX_PIN, UART_DATA_RX_PIN,
+                 UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    uart_driver_install(UART_DATA_PORT_NUM, UART_DATA_BUF_SIZE, 0, 0, NULL, 0);
+}
+
+/**
+ * UART 数据写入回调：将 JSON 数据同时写到 UART1
+ */
+static void uart_data_write_cb(const char *data, size_t len, void *ctx) {
+    (void)ctx;
+    uart_write_bytes(UART_DATA_PORT_NUM, data, len);
+}
 
 /* ================================================================
  * 解析任务 (从队列取数据，使用 opendroneid 库解析)
  * ================================================================ */
 
 static void parser_task(void *pvParameter) {
-    ESP_LOGI(TAG, "Parser task started");
+    json_debug("RID_MAIN", "Parser task started");
 
     QueueHandle_t queue = crid_sniffer_get_queue();
     SemaphoreHandle_t mutex = crid_tracker_get_mutex();
@@ -75,7 +117,7 @@ static void parser_task(void *pvParameter) {
                 uav = crid_tracker_find_or_create(msg.src_mac);
             }
             if (uav == NULL) {
-                ESP_LOGW(TAG, "Tracker full! Cannot track new UAV");
+                json_warning("RID_MAIN", "Tracker full! Cannot track new UAV");
                 xSemaphoreGive(mutex);
                 continue;
             }
@@ -101,9 +143,13 @@ static void parser_task(void *pvParameter) {
 
         xSemaphoreGive(mutex);
 
-        // 仅新发现 UAV 时打印 1 行精简信息，重复更新不显示
+        // 新发现 UAV 时输出发现事件 + 完整更新
         if (was_new && uav->basic_id.valid) {
-            crid_display_uav_summary(uav);
+            json_uav_discovery(uav);
+        }
+        // 每次解码后输出完整解析数据
+        if (uav->basic_id.valid) {
+            json_uav_update(uav);
         }
     }
 }
@@ -113,7 +159,7 @@ static void parser_task(void *pvParameter) {
  * ================================================================ */
 
 static void monitor_task(void *pvParameter) {
-    ESP_LOGI(TAG, "Monitor task started");
+    json_debug("RID_MAIN", "Monitor task started");
 
     uint32_t loop_count = 0;
     uint32_t last_packets = 0;
@@ -136,24 +182,11 @@ static void monitor_task(void *pvParameter) {
         uint32_t beacons = stats->beacon_count;
         uint32_t non_rid = stats->non_rid_vendor_ie;
 
-        ESP_LOGI(TAG, "=== Status (%lu min) ===", (unsigned long)loop_count);
-        ESP_LOGI(TAG, "  Free heap: %lu bytes", (unsigned long)esp_get_free_heap_size());
-        ESP_LOGI(TAG, "  Total packets: %lu (%.1f pkt/s)",
-                 (unsigned long)total_pkts,
-                 (total_pkts - last_packets) / 60.0f);
-        ESP_LOGI(TAG, "  Mgmt frames:   %lu (%.1f frm/s)",
-                 (unsigned long)mgmt_pkts,
-                 (mgmt_pkts - last_mgmt) / 60.0f);
-        ESP_LOGI(TAG, "  Beacons:        %lu (%.1f /s)",
-                 (unsigned long)beacons,
-                 (beacons - last_beacons) / 60.0f);
-        ESP_LOGI(TAG, "  RID detected:   %lu (%.1f /s)",
-                 (unsigned long)rid_pkts,
-                 (rid_pkts - last_rid) / 60.0f);
-        ESP_LOGI(TAG, "  Non-RID Vendor: %lu (%.1f /s)",
-                 (unsigned long)non_rid,
-                 (non_rid - last_non_rid) / 60.0f);
-        ESP_LOGI(TAG, "  Queue overflows: %lu", (unsigned long)overflows);
+        float pkt_rate = (total_pkts - last_packets) / 60.0f;
+        float mgmt_rate = (mgmt_pkts - last_mgmt) / 60.0f;
+        float beacon_rate = (beacons - last_beacons) / 60.0f;
+        float rid_rate = (rid_pkts - last_rid) / 60.0f;
+        float non_rid_rate = (non_rid - last_non_rid) / 60.0f;
 
         last_packets = total_pkts;
         last_mgmt = mgmt_pkts;
@@ -162,14 +195,14 @@ static void monitor_task(void *pvParameter) {
         last_non_rid = non_rid;
 
         // 打印活跃无人机列表并清理超时
+        int active = 0;
         if (xSemaphoreTake(mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-            int active = crid_tracker_get_active_count();
-            ESP_LOGI(TAG, "  Active UAVs: %d", active);
+            active = crid_tracker_get_active_count();
 
             uav_track_t *table = crid_tracker_get_table();
             for (int i = 0; i < MAX_TRACKED_UAVS; i++) {
                 if (!table[i].active) continue;
-                crid_display_uav_status(&table[i]);
+                json_uav_status(&table[i]);
             }
 
             // 清理超时条目
@@ -178,7 +211,15 @@ static void monitor_task(void *pvParameter) {
             xSemaphoreGive(mutex);
         }
 
-        ESP_LOGI(TAG, "========================");
+        // 输出汇总状态 JSON
+        json_status_report(loop_count,
+                          (uint32_t)esp_get_free_heap_size(),
+                          total_pkts, pkt_rate,
+                          mgmt_pkts, mgmt_rate,
+                          beacons, beacon_rate,
+                          rid_pkts, rid_rate,
+                          non_rid, non_rid_rate,
+                          overflows, active);
     }
 }
 
@@ -187,52 +228,49 @@ static void monitor_task(void *pvParameter) {
  * ================================================================ */
 
 void app_main(void) {
-    printf("\n\n");
-    printf("================================================\n");
-    printf("  ESP32 Remote ID Scanner\n");
-    printf("  Version: %s (built %s %s)\n", CRID_VERSION_STRING, CRID_BUILD_DATE, CRID_BUILD_TIME);
-    printf("  Standards: ASTM F3411-22 / ASD-STAN prEN 4709-002\n");
-    printf("================================================\n");
-    fflush(stdout);
+    // 0. 初始化 UART 数据端口（GPIO17 TX），用于输出 UAV 解析数据
+    uart_data_port_init();
+    // 设置数据流回调：UAV 数据同时输出到 stdout（USB CDC）和 UART1
+    json_set_data_write_cb(uart_data_write_cb, NULL);
 
-    ESP_LOGI(TAG, "Starting Remote ID Scanner v%s", CRID_VERSION_STRING);
-    ESP_LOGI(TAG, "Build: %s %s", CRID_BUILD_DATE, CRID_BUILD_TIME);
-    ESP_LOGI(TAG, "ESP-IDF: %s", esp_get_idf_version());
-    ESP_LOGI(TAG, "Free heap: %lu bytes", (unsigned long)esp_get_free_heap_size());
-    ESP_LOGI(TAG, "Protocol library: opendroneid v%d", ODID_PROTOCOL_VERSION);
+    // JSON 启动横幅（调试流 → 仅 USB CDC）
+    json_startup_banner(CRID_VERSION_STRING, CRID_BUILD_DATE, CRID_BUILD_TIME,
+                        FIXED_CHANNEL, MAX_TRACKED_UAVS,
+                        (uint32_t)esp_get_free_heap_size());
+
+    // JSON 启动信息（调试流 → 仅 USB CDC）
+    json_startup_info(CRID_VERSION_STRING, CRID_BUILD_DATE, CRID_BUILD_TIME,
+                      esp_get_idf_version(),
+                      (uint32_t)esp_get_free_heap_size(),
+                      ODID_PROTOCOL_VERSION);
 
     // 1. 初始化追踪器
     crid_tracker_init();
 
     // 2. 初始化 NVS
-    ESP_LOGI(TAG, "Initializing NVS...");
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_LOGW(TAG, "Erasing NVS flash...");
-        ESP_ERROR_CHECK(nvs_flash_erase());
+        json_warning("RID_MAIN", "Erasing NVS flash...");
+        nvs_flash_erase();
         ret = nvs_flash_init();
     }
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "NVS init failed: %s", esp_err_to_name(ret));
+        char err[64];
+        snprintf(err, sizeof(err), "NVS init failed: %s", esp_err_to_name(ret));
+        json_error("RID_MAIN", err);
         return;
     }
 
     // 3. 初始化网络接口和事件循环
-    ESP_LOGI(TAG, "Initializing netif...");
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_LOGI(TAG, "Creating event loop...");
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_init();
+    esp_event_loop_create_default();
 
     // 4. 初始化 Wi-Fi sniffer
     ret = crid_sniffer_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Sniffer init failed!");
+        json_error("RID_MAIN", "Sniffer init failed!");
         return;
     }
-
-    ESP_LOGI(TAG, "Wi-Fi monitor mode enabled");
-    ESP_LOGI(TAG, "Promiscuous mode: ON");
-    ESP_LOGI(TAG, "Locked to channel %d", FIXED_CHANNEL);
 
     // 5. 创建任务
     BaseType_t task_created;
@@ -240,38 +278,21 @@ void app_main(void) {
     task_created = xTaskCreate(parser_task, "parser",
                                PARSER_TASK_STACK, NULL, PARSER_TASK_PRIO, NULL);
     if (task_created != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create parser task!");
+        json_error("RID_MAIN", "Failed to create parser task!");
         return;
     }
-    ESP_LOGI(TAG, "Parser task created (stack: %d)", PARSER_TASK_STACK);
 
     task_created = xTaskCreate(monitor_task, "monitor",
                                MONITOR_TASK_STACK, NULL, MONITOR_TASK_PRIO, NULL);
     if (task_created != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create monitor task!");
+        json_error("RID_MAIN", "Failed to create monitor task!");
         return;
     }
-    ESP_LOGI(TAG, "Monitor task created (stack: %d)", MONITOR_TASK_STACK);
 
     crid_sniffer_start_channel_hold();
-    ESP_LOGI(TAG, "Channel hold task created");
 
-    // 6. 启动完成
-    printf("\n");
-    printf("================================================\n");
-    printf("  Remote ID Scanner Ready!\n");
-    printf("  Version: %s (built %s %s)\n", CRID_VERSION_STRING, CRID_BUILD_DATE, CRID_BUILD_TIME);
-    printf("  Locked to channel %d\n", FIXED_CHANNEL);
-    printf("  Tracking up to %d UAVs\n", MAX_TRACKED_UAVS);
-    printf("  Protocols: ASTM F3411, ASD-STAN prEN 4709-002\n");
-    printf("  Free heap: %lu bytes\n",
-           (unsigned long)esp_get_free_heap_size());
-    printf("================================================\n\n");
-    fflush(stdout);
-
-    ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "Remote ID Scanner v%s is running!", CRID_VERSION_STRING);
-    ESP_LOGI(TAG, "Tracking up to %d UAVs", MAX_TRACKED_UAVS);
-    ESP_LOGI(TAG, "Free heap: %lu bytes", (unsigned long)esp_get_free_heap_size());
-    ESP_LOGI(TAG, "========================================");
+    // 6. 启动完成（调试流 → USB CDC）
+    json_startup_banner(CRID_VERSION_STRING, CRID_BUILD_DATE, CRID_BUILD_TIME,
+                        FIXED_CHANNEL, MAX_TRACKED_UAVS,
+                        (uint32_t)esp_get_free_heap_size());
 }

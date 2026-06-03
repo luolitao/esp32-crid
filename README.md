@@ -4,7 +4,7 @@
 
 ## 功能
 
-- **接收器 (Scanner)**：Wi-Fi 混杂模式抓包，解析 ASTM F3411-22 / ASD-STAN prEN 4709-002 标准的 Remote ID 信号。新发现无人机仅打印 1 行精简信息，每分钟输出状态摘要。
+- **接收器 (Scanner)**：Wi-Fi 混杂模式抓包，解析 ASTM F3411-22 / ASD-STAN prEN 4709-002 标准的 Remote ID 信号。所有输出以 JSON 格式通过串口输出，每行一条完整的 JSON 对象。支持双端口输出：UAV 数据走 UART1（GPIO17），调试信息走 USB CDC。
 - **发射器 (Simulator)**：模拟无人机广播 Beacon 帧（巡游路径），Vendor IE 包含 Message Counter + Packed 消息。
 
 ## 构建
@@ -28,6 +28,7 @@ idf.py build
 │   ├── crid_parser.c/h           # opendroneid 库解码（Message Pack / 单消息）
 │   ├── crid_tracker.c/h          # 无人机追踪表（线程安全，超时清理）
 │   ├── crid_display.c/h          # 精简输出：新 UAV 1 行 + 每分钟状态摘要
+│   ├── crid_json.c/h              # JSON 格式化输出（所有信息统一 JSON 格式）
 │   └── crid_rx_types.h           # 接收端类型定义、OUI、配置常量
 ├── main_tx/                      # 发射器
 │   ├── crid-sim.c                # 主入口
@@ -54,8 +55,79 @@ idf.py build
 | IE ID | 221（Vendor Specific） |
 | 消息格式 | Message Pack（含 Message Counter） |
 
-## 接收端输出
+## 接收端输出（JSON 格式，双端口）
 
-- **新 UAV 发现**：1 行精简日志 `[MAC] ID @ lat,lng alt=Xm spd=X.Xm/s rssi=-XXdBm`
-- **重复更新**：不显示，仅内部追踪
-- **每分钟摘要**：monitor_task 列出活跃 UAV 状态、抓包速率统计
+所有输出以 JSON 格式发送，每行一条完整的 JSON 对象。
+
+### 端口分配
+
+| 端口 | 物理接口 | 内容 |
+|------|---------|------|
+| **数据端口** | UART1（GPIO17 TX, 115200 baud）| UAV 解析数据（`uav_discovery` / `uav_update` / `uav_status` / `uav_timeout` / `status`） |
+| **调试端口** | USB CDC（stdout）| 启动信息、调试、告警、错误、解码诊断（`startup` / `debug` / `warning` / `error` / `decode_fail`） |
+
+> 数据端口同时也会输出到 USB CDC，方便开发调试。上位机可以只连接 UART1 接收纯净的 UAV 数据流。
+
+### 事件类型
+
+| evt | 输出端口 | 说明 | 触发时机 |
+|-----|---------|------|---------|
+| `startup` | 调试 | 系统启动信息 | 启动时（横幅 + 详细参数） |
+| `status` | 数据 | 定期状态统计 | 每 60 秒（抓包速率、活跃 UAV 数等） |
+| `uav_discovery` | 数据 | 新 UAV 发现 | 首次收到某 MAC 的 RID 信号 |
+| `uav_update` | 数据 | UAV 解析数据更新 | 每次解码成功后（完整字段） |
+| `uav_status` | 数据 | UAV 活跃状态 | 每 60 秒（含 age_ms） |
+| `uav_timeout` | 数据 | UAV 超时移除 | 5 分钟无信号后清理 |
+| `uav_detail` | 数据 | UAV 完整详情 | 按需调用（所有 Basic ID、Auth 等） |
+| `warning` | 调试 | 告警 | 追踪表满、信道设置失败等 |
+| `error` | 调试 | 错误 | 初始化失败、任务创建失败等 |
+| `debug` | 调试 | 调试信息 | 任务启动确认、Wi-Fi 模式确认等 |
+| `decode_fail` | 调试 | 解码失败诊断 | 每 32 次失败输出一次（含原始字节） |
+
+### UAV 数据字段
+
+每次 `uav_update` 包含完整的无人机 Remote ID 数据：
+
+```json
+{
+  "evt": "uav_update",
+  "ts": 12345,
+  "mac": "AA:BB:CC:DD:EE:FF",
+  "rssi": -45,
+  "channel": 6,
+  "transport": "Wi-Fi Beacon",
+  "protocol": "ASTM F3411",
+  "msg_count": 10,
+  "basic_id": {
+    "id_type": "serial_number",
+    "ua_type": "helicopter_or_multirotor",
+    "uas_id": "SN12345678"
+  },
+  "location": {
+    "status": "airborne",
+    "latitude": 22.1234567,
+    "longitude": 113.1234567,
+    "alt_baro": 120.5,
+    "alt_geo": 125.3,
+    "height": 100.0,
+    "height_ref": "over_takeoff",
+    "direction": 45.0,
+    "speed_h": 5.50,
+    "speed_v": 0.00,
+    "acc_h": "...",
+    "acc_v": "...",
+    "acc_baro": "...",
+    "acc_speed": "...",
+    "timestamp": 1234.5,
+    "ts_acc": 1
+  },
+  "system": { "operator_loc_type": "takeoff", ... },
+  "self_id": { "type": "text", "desc": "Drone #1" },
+  "operator_id": { "type": 1, "id": "OP12345" },
+  "auth": []
+}
+```
+
+- 所有枚举值使用 snake_case 字符串（如 `"serial_number"`、`"airborne"`），便于下游解析
+- 未获取到的字段为 `null`
+- 字符串字段经过 JSON 转义，安全可解析
