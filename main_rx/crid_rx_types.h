@@ -2,7 +2,7 @@
  * crid_rx_types.h — 接收端公共类型定义与配置常量
  *
  * ESP32 Remote ID Scanner
- * Standards: ASTM F3411-22 / ASD-STAN prEN 4709-002 / GB 42590-2023 (C-RID)
+ * Standards: ASTM F3411-22 / ASD-STAN prEN 4709-002
  */
 
 #ifndef CRID_RX_TYPES_H
@@ -34,7 +34,6 @@
  */
 
 // ---- Wi-Fi Beacon OUI (0xFA0BBC) ----
-// ASTM F3411-22a / GB 42590-2023 C-RID 共用
 #define OUI_BEACON_0  0xFA
 #define OUI_BEACON_1  0x0B
 #define OUI_BEACON_2  0xBC
@@ -116,32 +115,7 @@ typedef enum {
     RID_PROTOCOL_UNKNOWN   = 0,
     RID_PROTOCOL_ASTM_F3411 = 1,
     RID_PROTOCOL_ASD_STAN   = 2,
-    RID_PROTOCOL_CN_RID     = 3,  // GB 42590-2023 C-RID
 } rid_protocol_t;
-
-/* ================================================================
- * GB 42590-2023 C-RID 中国无人机分类 (参照 ORIP cn_rid.h)
- * ================================================================ */
-
-typedef enum {
-    CN_UAV_CATEGORY_UNKNOWN  = 0,
-    CN_UAV_CATEGORY_MICRO    = 1,  // 微型 < 250g
-    CN_UAV_CATEGORY_LIGHT    = 2,  // 轻型 250g - 4kg
-    CN_UAV_CATEGORY_SMALL    = 3,  // 小型 4kg - 25kg
-    CN_UAV_CATEGORY_MEDIUM   = 4,  // 中型 25kg - 150kg
-    CN_UAV_CATEGORY_LARGE    = 5,  // 大型 > 150kg
-} cn_uav_category_t;
-
-/* ================================================================
- * GB 42590-2023 C-RID 飞行区域分类 (参照 ORIP cn_rid.h)
- * ================================================================ */
-
-typedef enum {
-    CN_FLIGHT_ZONE_UNKNOWN     = 0,
-    CN_FLIGHT_ZONE_ALLOWED     = 1,  // 适飞空域
-    CN_FLIGHT_ZONE_RESTRICTED  = 2,  // 限制空域
-    CN_FLIGHT_ZONE_PROHIBITED  = 3,  // 禁飞空域
-} cn_flight_zone_t;
 
 /* ================================================================
  * 分层数据结构 (参照 ORIP types.h)
@@ -226,7 +200,7 @@ typedef struct {
 #define CH_HOLD_TASK_STACK      3072        // 信道保持任务栈大小
 #define CH_HOLD_TASK_PRIO       2           // 信道保持任务优先级
 
-// 锁定监听信道 (中国标准 C-RID 使用信道 6)
+// 锁定监听信道
 #define FIXED_CHANNEL           6
 
 // 无人机超时时间 (毫秒)
@@ -251,7 +225,7 @@ typedef struct __attribute__((__packed__)) {
 
 // 消息类型枚举
 typedef enum {
-    MSG_TYPE_RID = 0,           // RID Vendor IE (OUI=FA:0B:BC)
+    MSG_TYPE_RID = 0,           // RID Vendor IE
     MSG_TYPE_NON_RID_VENDOR,    // 非 RID Vendor IE (ID=221, 其他 OUI)
     MSG_TYPE_BEACON_NO_VENDOR,  // 普通 Beacon（不含 Vendor IE 或诊断采样）
 } sniffer_msg_type_t;

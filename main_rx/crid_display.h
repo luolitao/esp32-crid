@@ -17,7 +17,7 @@ extern "C" {
 void crid_display_mac_str(const uint8_t *mac, char *buf, size_t size);
 
 /**
- * 打印无人机发现摘要（带边框表格）
+ * 打印无人机发现摘要（精简 1 行，新 UAV 首次发现时调用）
  */
 void crid_display_uav_summary(const uav_track_t *uav);
 

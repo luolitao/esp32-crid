@@ -2,7 +2,7 @@
   "cmake.ignoreCMakeListsMissing": true,
   "idf.currentSetup": "/Users/luolitao/.espressif/v6.0.1/esp-idf",
   "idf.openOcdConfigs": [
-    "board/esp32s3-builtin.cfg"
+    "board/esp32c5-builtin.cfg"
   ],
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32s3"
@@ -14,5 +14,5 @@
     "--compile-commands-dir=/Users/luolitao/remoteid/esp32/esp32-crid/build"
   ],
   "idf.flashType": "UART",
-  "idf.port": "/dev/tty.usbmodem21101"
+  "idf.port": "/dev/tty.usbserial-A5069RR4"
 }

@@ -2,7 +2,7 @@
  * crid_scan_main.c — Remote ID Scanner 主入口
  *
  * ESP32 Remote ID Scanner
- * Standards: ASTM F3411-22 / ASD-STAN prEN 4709-002 / GB 42590-2023 (C-RID)
+ * Standards: ASTM F3411-22 / ASD-STAN prEN 4709-002
  *
  * 架构：
  *   - crid_sniffer:   Wi-Fi 混杂模式抓包，ISR 安全回调
@@ -41,8 +41,6 @@ static void parser_task(void *pvParameter) {
     QueueHandle_t queue = crid_sniffer_get_queue();
     SemaphoreHandle_t mutex = crid_tracker_get_mutex();
     sniffer_msg_t msg;
-    uint32_t msg_count = 0;
-    uint32_t last_summary_ms = 0;
     uint32_t last_cleanup_ms = 0;
 
     while (1) {
@@ -93,15 +91,7 @@ static void parser_task(void *pvParameter) {
         uav->oui[2] = msg.oui[2];
         uav->oui_type = msg.oui_type;
         uav->transport = (uint8_t)GET_RID_TRANSPORT(msg.oui[0], msg.oui[1], msg.oui[2]);
-        // 根据 OUI 判断协议：FA:0B:BC 可能为 ASTM 或 GB，其他为 ASTM
-        if (msg.oui[0] == OUI_BEACON_0 && msg.oui[1] == OUI_BEACON_1 && msg.oui[2] == OUI_BEACON_2) {
-            // FA:0B:BC 同时被 ASTM 和 GB 使用，通过 Vendor Type 区分
-            uav->protocol = (msg.oui_type == RID_WIFI_BEACON_VENDOR_TYPE) ? RID_PROTOCOL_CN_RID : RID_PROTOCOL_ASTM_F3411;
-        } else {
-            uav->protocol = RID_PROTOCOL_ASTM_F3411;
-        }
-
-        msg_count++;
+        uav->protocol = RID_PROTOCOL_ASTM_F3411;
 
         // 解码
         crid_parser_decode(uav, msg.data, msg.data_len);
@@ -111,11 +101,9 @@ static void parser_task(void *pvParameter) {
 
         xSemaphoreGive(mutex);
 
-        // 仅在新无人机或每分钟汇总时打印摘要，避免刷屏
-        bool time_for_summary = (esp_log_timestamp() - last_summary_ms >= 60000);
-        if (was_new || (time_for_summary && uav->basic_id.valid)) {
+        // 仅新发现 UAV 时打印 1 行精简信息，重复更新不显示
+        if (was_new && uav->basic_id.valid) {
             crid_display_uav_summary(uav);
-            last_summary_ms = esp_log_timestamp();
         }
     }
 }
@@ -135,7 +123,7 @@ static void monitor_task(void *pvParameter) {
     uint32_t last_non_rid = 0;
 
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(30000));
+        vTaskDelay(pdMS_TO_TICKS(60000));
         loop_count++;
 
         sniffer_stats_t *stats = crid_sniffer_get_stats();
@@ -148,23 +136,23 @@ static void monitor_task(void *pvParameter) {
         uint32_t beacons = stats->beacon_count;
         uint32_t non_rid = stats->non_rid_vendor_ie;
 
-        ESP_LOGI(TAG, "=== Status (%lu min) ===", (unsigned long)(loop_count * 30 / 60));
+        ESP_LOGI(TAG, "=== Status (%lu min) ===", (unsigned long)loop_count);
         ESP_LOGI(TAG, "  Free heap: %lu bytes", (unsigned long)esp_get_free_heap_size());
         ESP_LOGI(TAG, "  Total packets: %lu (%.1f pkt/s)",
                  (unsigned long)total_pkts,
-                 (total_pkts - last_packets) / 30.0f);
+                 (total_pkts - last_packets) / 60.0f);
         ESP_LOGI(TAG, "  Mgmt frames:   %lu (%.1f frm/s)",
                  (unsigned long)mgmt_pkts,
-                 (mgmt_pkts - last_mgmt) / 30.0f);
+                 (mgmt_pkts - last_mgmt) / 60.0f);
         ESP_LOGI(TAG, "  Beacons:        %lu (%.1f /s)",
                  (unsigned long)beacons,
-                 (beacons - last_beacons) / 30.0f);
+                 (beacons - last_beacons) / 60.0f);
         ESP_LOGI(TAG, "  RID detected:   %lu (%.1f /s)",
                  (unsigned long)rid_pkts,
-                 (rid_pkts - last_rid) / 30.0f);
+                 (rid_pkts - last_rid) / 60.0f);
         ESP_LOGI(TAG, "  Non-RID Vendor: %lu (%.1f /s)",
                  (unsigned long)non_rid,
-                 (non_rid - last_non_rid) / 30.0f);
+                 (non_rid - last_non_rid) / 60.0f);
         ESP_LOGI(TAG, "  Queue overflows: %lu", (unsigned long)overflows);
 
         last_packets = total_pkts;
@@ -203,7 +191,7 @@ void app_main(void) {
     printf("================================================\n");
     printf("  ESP32 Remote ID Scanner\n");
     printf("  Version: %s (built %s %s)\n", CRID_VERSION_STRING, CRID_BUILD_DATE, CRID_BUILD_TIME);
-    printf("  Standards: ASTM F3411-22 / ASD-STAN prEN 4709-002 / GB 42590-2023\n");
+    printf("  Standards: ASTM F3411-22 / ASD-STAN prEN 4709-002\n");
     printf("================================================\n");
     fflush(stdout);
 
@@ -275,8 +263,7 @@ void app_main(void) {
     printf("  Version: %s (built %s %s)\n", CRID_VERSION_STRING, CRID_BUILD_DATE, CRID_BUILD_TIME);
     printf("  Locked to channel %d\n", FIXED_CHANNEL);
     printf("  Tracking up to %d UAVs\n", MAX_TRACKED_UAVS);
-    printf("  Protocols: ASTM F3411, ASD-STAN prEN 4709-002,\n");
-    printf("             GB 42590-2023 (C-RID)\n");
+    printf("  Protocols: ASTM F3411, ASD-STAN prEN 4709-002\n");
     printf("  Free heap: %lu bytes\n",
            (unsigned long)esp_get_free_heap_size());
     printf("================================================\n\n");

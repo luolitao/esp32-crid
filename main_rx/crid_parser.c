@@ -2,16 +2,14 @@
  * crid_parser.c — Remote ID 消息解析模块
  *
  * 使用 opendroneid 库解码，支持：
- *   - Message Pack 格式 (ASTM F3411-22 / GB 42590-2023)
+ *   - Message Pack 格式 (ASTM F3411-22)
  *   - 单消息格式 (每个 IE 携带一条 25 字节消息)
  *
- * 数据布局 (data[0] 开始，sniffer 已跳过 ID+Len+OUI+OUI_Type=6 字节)：
+ * 数据布局 (data[0] 开始，sniffer 已跳过 ID+Len+OUI+OUI_Type+Counter=7 字节)：
  *   ASTM F3411:      [MessagePackHeader(0xF2)] [SingleMsgSize(25)] [MsgCount] [messages...]
- *   GB 42590 Beacon:  [Counter] [MessagePackHeader(0xF2)] [SingleMsgSize(25)] [MsgCount] [messages...]
  *   单消息格式:       [SingleMsgHeader(0x02~0x52)] [25-byte message]
  *
- * 策略：优先检查 data[0] 是否为 PACKED header；再尝试跳过 Counter 后解码；
- * 最后尝试单消息格式。避免 Counter 字节被误判为单消息类型产生噪声告警。
+ * 策略：优先检查 data[0] 是否为 PACKED header；否则尝试单消息格式。
  */
 
 #include "esp_log.h"
@@ -37,6 +35,7 @@ static int try_decode(uav_track_t *uav, const uint8_t *data, uint8_t len) {
             ESP_LOGW(TAG, "Message Pack decode failed (err=%d) SingleMsgSize=%u MsgPackSize=%u",
                      ret, pack->SingleMessageSize, pack->MsgPackSize);
         }
+        
         return ret;
     } else if (msg_type >= ODID_MESSAGETYPE_BASIC_ID && msg_type <= ODID_MESSAGETYPE_OPERATOR_ID) {
         if (len < ODID_MESSAGE_SIZE) return ODID_FAIL;
@@ -57,46 +56,18 @@ void crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t len) {
         if (try_decode(uav, data, len) == ODID_SUCCESS) {
             uav->last_seen_ms = esp_log_timestamp();
             uav->msg_count++;
+            
             return;
         }
     }
 
-    // 策略 2: 跳过 1 字节 (Counter)，用于 GB 42590 Beacon 格式
-    //         data: [Counter] [MessagePackHeader(0xF2)] [SingleMsgSize] [MsgCount] ...
-    if (len > 1) {
-        ODID_messagetype_t t1 = decodeMessageType(data[1]);
-        if (t1 == ODID_MESSAGETYPE_PACKED) {
-            if (try_decode(uav, data + 1, len - 1) == ODID_SUCCESS) {
-                uav->last_seen_ms = esp_log_timestamp();
-                uav->msg_count++;
-                return;
-            }
-        }
-    }
-
-    // 策略 3: 跳过 2 字节 (Counter + Reserved)，用于 GB 42590 变体
-    //         data: [Counter] [Reserved/0x00] [MessagePackHeader(0xF2)] ...
-    if (len > 2) {
-        ODID_messagetype_t t2 = decodeMessageType(data[2]);
-        if (t2 == ODID_MESSAGETYPE_PACKED) {
-            if (try_decode(uav, data + 2, len - 2) == ODID_SUCCESS) {
-                uav->last_seen_ms = esp_log_timestamp();
-                uav->msg_count++;
-                return;
-            }
-        }
-    }
-
-    // 策略 4 (fallback): 如果以上都未找到 PACKED header，尝试 data[0] 作为单消息
-    //         注意：此分支也可能是 Counter 字节被误判，但至少尝试一次
+    // 策略 2 (fallback): 尝试 data[0] 作为单消息
     if (t0 >= ODID_MESSAGETYPE_BASIC_ID && t0 <= ODID_MESSAGETYPE_OPERATOR_ID) {
         if (try_decode(uav, data, len) == ODID_SUCCESS) {
             uav->last_seen_ms = esp_log_timestamp();
             uav->msg_count++;
+            
             return;
-        } else {
-            // 单消息解码失败，可能是 Counter 误判，不打印告警
-            // 真正的单消息格式解码失败才需要关注，但目前无法区分
         }
     }
 
@@ -104,8 +75,8 @@ void crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t len) {
     static uint32_t s_fail_count = 0;
     s_fail_count++;
     if ((s_fail_count & 0x1F) == 0) {
-        ESP_LOGW(TAG, "All decode strategies failed: [0]=0x%02X [1]=0x%02X [2]=0x%02X len=%u",
-                 data[0], (len > 1 ? data[1] : 0), (len > 2 ? data[2] : 0), len);
+        ESP_LOGW(TAG, "All decode strategies failed: [0]=0x%02X [1]=0x%02X len=%u",
+                 data[0], (len > 1 ? data[1] : 0), len);
     }
 }
 

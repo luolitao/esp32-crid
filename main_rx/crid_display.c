@@ -181,18 +181,6 @@ static const char *get_auth_type_name(uint8_t a) {
     }
 }
 
-// GB 42590-2023 中国无人机分类名称 (参照 ORIP cn_rid.h)
-static const char *get_cn_uav_category_name(uint8_t c) {
-    switch (c) {
-        case CN_UAV_CATEGORY_MICRO:  return "Micro (<250g)";
-        case CN_UAV_CATEGORY_LIGHT:  return "Light (250g-4kg)";
-        case CN_UAV_CATEGORY_SMALL:  return "Small (4-25kg)";
-        case CN_UAV_CATEGORY_MEDIUM: return "Medium (25-150kg)";
-        case CN_UAV_CATEGORY_LARGE:  return "Large (>150kg)";
-        default:                     return "Unknown";
-    }
-}
-
 // 传输方式名称
 static const char *get_transport_name(uint8_t t) {
     switch (t) {
@@ -209,7 +197,6 @@ static const char *get_protocol_name(uint8_t p) {
     switch (p) {
         case RID_PROTOCOL_ASTM_F3411: return "ASTM F3411";
         case RID_PROTOCOL_ASD_STAN:   return "ASD-STAN";
-        case RID_PROTOCOL_CN_RID:     return "GB 42590";
         default:                      return "Unknown";
     }
 }
@@ -244,54 +231,26 @@ void crid_display_mac_str(const uint8_t *mac, char *buf, size_t size) {
 }
 
 /* ================================================================
- * 摘要打印（带边框表格）
- * 使用 rid_*_t 分层结构体，与 ODID_UAS_Data 解耦
+ * 精简发现打印（仅 1 行，新 UAV 首次发现时调用）
+ * 格式: [MAC] ID @ lat,lng alt=Xm spd=X.Xm/s RSSI=-XXdBm
  * ================================================================ */
 
 void crid_display_uav_summary(const uav_track_t *uav) {
     char mac_str[18];
     crid_display_mac_str(uav->mac, mac_str, sizeof(mac_str));
 
-    printf("\n");
-    printf("╔══════════════════════════════════════════════════════╗\n");
-    printf("║          Remote ID UAV Detected                     ║\n");
-    printf("╠══════════════════════════════════════════════════════╣\n");
-    printf("║ MAC: %-47s ║\n", mac_str);
-    printf("║ RSSI: %-4d dBm  Channel: %-2d  Msgs: %-6lu      ║\n",
-           uav->last_rssi, uav->last_channel, (unsigned long)uav->msg_count);
-    printf("║ Transport: %-42s ║\n", get_transport_name(uav->transport));
-    printf("║ Protocol:  %-42s ║\n", get_protocol_name(uav->protocol));
-
-    if (uav->basic_id.valid) {
-        printf("║ UAS ID: %-45s ║\n", uav->basic_id.uas_id);
-        printf("║ Type: %-49s ║\n", get_ua_type_name(uav->basic_id.ua_type));
+    if (uav->basic_id.valid && uav->location.valid) {
+        ESP_LOGI(TAG, "[%s] %s @ %.5f,%.5f alt=%.0fm spd=%.1fm/s rssi=%d",
+                 mac_str, uav->basic_id.uas_id,
+                 uav->location.latitude, uav->location.longitude,
+                 uav->location.altitude_baro, uav->location.speed_horizontal,
+                 uav->last_rssi);
+    } else if (uav->basic_id.valid) {
+        ESP_LOGI(TAG, "[%s] %s (no pos) rssi=%d",
+                 mac_str, uav->basic_id.uas_id, uav->last_rssi);
+    } else {
+        ESP_LOGI(TAG, "[%s] (no ID) rssi=%d", mac_str, uav->last_rssi);
     }
-
-    if (uav->location.valid) {
-        printf("║ Position: %11.7f°, %11.7f°       ║\n",
-               uav->location.latitude, uav->location.longitude);
-        printf("║ Altitude: %8.1f m   Speed: %6.1f m/s         ║\n",
-               uav->location.altitude_baro, uav->location.speed_horizontal);
-        printf("║ Status: %-46s ║\n", get_status_name(uav->location.status));
-    }
-
-    if (uav->self_id.valid) {
-        printf("║ Self ID: %-45s ║\n", uav->self_id.description);
-    }
-
-    if (uav->operator_id.valid) {
-        printf("║ Operator: %-44s ║\n", uav->operator_id.id);
-    }
-
-    if (uav->system.valid) {
-        printf("║ Op Pos: %12.7f°, %12.7f°       ║\n",
-               uav->system.operator_latitude, uav->system.operator_longitude);
-    }
-
-    uint32_t uptime = (esp_log_timestamp() - uav->first_seen_ms) / 1000;
-    printf("║ Tracking: %lu sec                              ║\n", (unsigned long)uptime);
-    printf("╚══════════════════════════════════════════════════════╝\n");
-    printf("\n");
 }
 
 /* ================================================================

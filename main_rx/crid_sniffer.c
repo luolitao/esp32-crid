@@ -101,11 +101,12 @@ static void wifi_sniffer_cb(void *buf, wifi_promiscuous_pkt_type_t type) {
                 msg.ssid_len = ssid_len;
 
                 // 提取 Vendor Specific 数据
-                // 统一跳过 ID + Len + OUI(3) + OUI Type(1) = 6 字节
-                // data[0] 可能是 Counter(GB) 或 Message Pack 头(ASTM)
+                // 格式: OUI(3) + OUI_Type(1) + MessageCounter(1) + Payload
+                // 跳过 ID + Len + OUI(3) + OUI_Type(1) + Counter(1) = 7 字节
+                // data[0] 为 Message Pack 头或单消息头
                 // parser 通过 decodeMessageType(data[0]) 动态处理
-                uint16_t data_offset = offset + 6;
-                uint16_t vendor_data_len = ie_length - 4;
+                uint16_t data_offset = offset + 7;
+                uint16_t vendor_data_len = ie_length - 5;  // OUI(3) + Type(1) + Counter(1)
                 msg.data_len = (vendor_data_len < sizeof(msg.data)) ? vendor_data_len : sizeof(msg.data);
                 memcpy(msg.data, &ie_start[data_offset], msg.data_len);
 
@@ -134,9 +135,9 @@ static void wifi_sniffer_cb(void *buf, wifi_promiscuous_pkt_type_t type) {
                     memcpy(msg.ssid, ssid, ssid_len);
                     msg.ssid_len = ssid_len;
 
-                    // 提取 Vendor IE 数据（跳过 OUI + Type，保留全部）
-                    uint16_t data_offset = offset + 6;
-                    uint16_t vendor_data_len = ie_length - 4;
+                    // 提取 Vendor IE 数据（跳过 OUI + Type + Counter，保留全部）
+                    uint16_t data_offset = offset + 7;
+                    uint16_t vendor_data_len = ie_length - 5;
                     msg.data_len = (vendor_data_len < sizeof(msg.data)) ? vendor_data_len : sizeof(msg.data);
                     memcpy(msg.data, &ie_start[data_offset], msg.data_len);
 
