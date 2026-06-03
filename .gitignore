@@ -2,3 +2,5 @@ build/
 sdkconfig
 sdkconfig.old
 .DS_Store
+.codebuddy/
+archive/
