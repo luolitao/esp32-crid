@@ -4,3 +4,29 @@ sdkconfig.old
 .DS_Store
 .codebuddy/
 archive/
+# --- 编译生成的中间文件和二进制文件 ---
+build/
+dist/
+*.bin
+*.elf
+*.map
+*.o
+*.a
+
+# --- IDE 配置文件 ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- 操作系统文件 ---
+.DS_Store       # Mac
+Thumbs.db       # Windows
+
+# --- 日志文件 ---
+*.log
+
+# --- 特定目录忽略 ---
+# 忽略整个 components 下的 build 目录
+components/*/build/
