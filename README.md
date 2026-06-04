@@ -39,7 +39,7 @@ idf.py build
 ├── components/opendroneid/       # OpenDroneID 官方库（解码核心）
 ├── partition_table/              # 分区表
 ├── tools/                        # 上位机工具
-│   └── json_monitor.py           # 串口 JSON 监视器（实时展示 + 退出摘要）
+│   └── esp32monitor.py           # TUI 串口监视器（实时表格 + 日志面板 + 快捷键）
 ├── CMakeLists.txt                # 根构建文件（通过 MAIN_DIR 切换目标）
 ├── sdkconfig.defaults            # 默认配置覆盖
 └── dependencies.lock             # 依赖锁定
@@ -135,37 +135,61 @@ idf.py build
 
 ## 上位机监视工具
 
-`tools/json_monitor.py` 从串口读取 ESP32 的 JSON 输出并实时展示。
+`tools/esp32monitor.py` 是一个基于 `rich` 库的 TUI 串口监视器，提供多面板实时展示和键盘快捷键操作。
 
 ```bash
 # 安装依赖
-pip install pyserial
+pip install pyserial rich
 
-# 自动检测串口，默认仅显示 UAV 数据
-python3 tools/json_monitor.py
+# 自动检测串口，默认仅显示 UAV 数据（TUI 表格模式）
+python3 tools/esp32monitor.py
 
 # 指定串口和模式
-python3 tools/json_monitor.py -p /dev/tty.usbserial-A5069RR4 -m data
-python3 tools/json_monitor.py -m debug      # 仅调试信息（启动/告警/解码失败）
-python3 tools/json_monitor.py -m static     # 仅静态消息（basic_id/self_id/operator_id/system/auth，自动去重）
-python3 tools/json_monitor.py -m all        # 所有事件
-
-# 退出时不显示摘要
-python3 tools/json_monitor.py --no-summary
+python3 tools/esp32monitor.py -p /dev/tty.usbserial-A5069RR4 -m data
+python3 tools/esp32monitor.py -m debug      # 仅调试信息（启动/告警/解码失败）
+python3 tools/esp32monitor.py -m static     # 仅静态消息（basic_id/self_id/operator_id/system/auth）
+python3 tools/esp32monitor.py -m all        # 所有事件
 ```
+
+### TUI 界面布局
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  🛰  ESP32 Remote ID Scanner v1.0  [ESP32-S3]                │  ← 标题栏
+├──────────────────────────────────────────────────────────────┤
+│  MAC             RSSI  ch msgs 传输        协议       UAS ID│  ← UAV 表格
+│  AA:BB:CC:DD:..   -45   6  12  Wi-Fi Beacon GB 46750 MOCK..│     (2秒刷新)
+│  ...                                                         │
+├──────────────────────────────────────────────────────────────┤
+│  日志                                                        │  ← 日志面板
+│  17:12:30 🆕 发现 AA:BB:CC:DD:EE:FF                          │
+│  17:12:31 📊 状态 运行1min 活跃UAV:1 总包:156(2.6/s)         │
+├──────────────────────────────────────────────────────────────┤
+│  🛸 UAV: 1活跃/1累计 │ ⏱ 1m 30s │ 📦 包:156(2.6/s) ...      │  ← 状态栏
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 快捷键
+
+| 键 | 功能 |
+|----|------|
+| `q` / `Ctrl+C` | 退出程序（自动显示会话摘要） |
+| `m` | 循环切换模式：data → debug → static → all |
+| `s` | 暂停并显示会话摘要 |
+| `r` | 刷新/清空日志面板 |
 
 ### 显示模式
 
 | 模式 | 说明 |
 |------|------|
-| `data`（默认） | UAV 解析数据：discovery / update / status / timeout |
-| `debug` | 调试信息：startup / warning / error / debug / decode_fail |
-| `static` | 仅无人机静态消息（basic_id、self_id、operator_id、system、auth），每个 MAC 每种字段只显示一次 |
-| `all` | 全部事件 |
+| `data`（默认） | TUI 表格模式：UAV 列表（MAC/RSSI/传输/协议/位置/速度）+ 实时日志 + 状态栏，每 2 秒刷新 |
+| `debug` | 全屏日志模式：startup / warning / error / debug / decode_fail |
+| `static` | 静态消息面板：basic_id、self_id、operator_id、system、auth |
+| `all` | 全部事件（TUI 表格 + 完整日志） |
 
 ### 退出摘要
 
-按 `Ctrl+C` 退出时自动打印会话摘要，包括运行时长、发现/活跃 UAV 数量、解码失败计数、全局状态快照、每个 UAV 的详细信息和活跃状态。可用 `--no-summary` 跳过。
+按 `q` 或 `Ctrl+C` 退出时自动打印会话摘要，包括运行时长、发现/活跃 UAV 数量、解码失败计数、每个 UAV 的详细信息和活跃状态（🟢/🔴）。
 
 ## 协议支持
 
@@ -178,8 +202,11 @@ python3 tools/json_monitor.py --no-summary
 | GB 46750-2023 | `FA:0B:BC` | Message Counter + 0xFF + 版本号 + 内容长度 + 数据标识(3B) + 数据内容(变长) | 自定义解析 21 个数据内容项 |
 
 > 所有 Wi-Fi Beacon 标准统一使用 OUI `FA:0B:BC`、Vendor Type `0x0D`。
-> GB 46750 使用 `data[1]==0xFF` 作为数据类型标识，数据标识固定 3 字节（按位指示字段存在性），
-> 支持全部 21 个数据内容项（001-021）的解析。
-> ASTM 与 GB 42590 在 Wire 格式上均以 `0xF1` 开头（ASTM 为位域编码
-> `MessageType=0xF` + `ProtoVersion=1`，国标为独立 magic byte），
-> 但语义上需要区分协议类型。
+>
+> **解析策略顺序**：
+> 1. 策略 1 — `data[1]==0xFF` 检测 GB 46750（版本号高3位==0x1）
+> 2. 策略 2 — `ODID_service_info` 直接 cast 解析 ASTM Packed
+> 3. 策略 3 — `data[1]==0xF1` 走 GB 42590 格式（`decode_gb_format()` 构造 ASTM 兼容头部）
+> 4. 策略 4 — Fallback 单消息格式
+>
+> ASTM 与 GB 42590 在 Wire 格式上均以 `0xF1` 开头（ASTM 为位域编码 `MessageType=0xF` + `ProtoVersion=1`，国标为独立 magic byte），语义上需通过解析策略区分协议类型。
