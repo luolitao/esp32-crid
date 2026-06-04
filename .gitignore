@@ -17,3 +17,5 @@ sdkconfig.defaults
 # OS
 .DS_Store
 Thumbs.db
+
+tools/esp32/
