@@ -105,9 +105,10 @@ typedef enum {
  * ================================================================ */
 
 typedef enum {
-    RID_PROTOCOL_UNKNOWN   = 0,
+    RID_PROTOCOL_UNKNOWN    = 0,
     RID_PROTOCOL_ASTM_F3411 = 1,
     RID_PROTOCOL_ASD_STAN   = 2,
+    RID_PROTOCOL_GB42590    = 3,   // 中国 GB 42590-2023
 } rid_protocol_t;
 
 /* ================================================================

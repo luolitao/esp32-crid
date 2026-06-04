@@ -229,7 +229,7 @@ void json_startup_banner(const char *version, const char *build_date,
                          int max_uavs, uint32_t free_heap) {
     DEBUG_PRINTF("{\"evt\":\"%s\",\"ts\":%lu,\"name\":\"ESP32 Remote ID Scanner\","
            "\"version\":\"%s\",\"build_date\":\"%s\",\"build_time\":\"%s\","
-           "\"standards\":[\"ASTM F3411-22\",\"ASD-STAN prEN 4709-002\"],"
+           "\"standards\":[\"ASTM F3411-22a\",\"ASD-STAN prEN 4709-002\",\"GB 42590-2023\"],"
            "\"channel\":%u,\"max_uavs\":%d,\"free_heap\":%lu}\n",
            evt_name(JSON_EVT_STARTUP),
            (unsigned long)esp_log_timestamp(),

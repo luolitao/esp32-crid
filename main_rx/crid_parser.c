@@ -30,8 +30,8 @@
 #include "crid_parser.h"
 #include "crid_json.h"
 
-void crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t len) {
-    if (len < 1) return;
+rid_protocol_t crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t len) {
+    if (len < 1) return RID_PROTOCOL_UNKNOWN;
 
     // 策略 1: 作为 ODID_service_info 解析 (ASTM 格式)
     //         格式: [MessageCounter(1)] [ODID_MessagePack_encoded(...)]
@@ -52,7 +52,7 @@ void crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t len) {
                 if (ret > 0) {
                     uav->last_seen_ms = esp_log_timestamp();
                     uav->msg_count++;
-                    return;
+                    return RID_PROTOCOL_ASTM_F3411;
                 }
             }
         }
@@ -92,7 +92,7 @@ void crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t len) {
                         if (ret > 0) {
                             uav->last_seen_ms = esp_log_timestamp();
                             uav->msg_count++;
-                            return;
+                            return RID_PROTOCOL_GB42590;
                         }
                     }
                 }
@@ -108,7 +108,7 @@ void crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t len) {
             if (ret == ODID_SUCCESS) {
                 uav->last_seen_ms = esp_log_timestamp();
                 uav->msg_count++;
-                return;
+                return RID_PROTOCOL_ASTM_F3411;  // 单消息格式默认按 ASTM 处理
             }
         }
     }
@@ -119,6 +119,7 @@ void crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t len) {
     if ((s_fail_count & 0x1F) == 0) {
         json_decode_fail(data[0], (len > 1 ? data[1] : 0), len);
     }
+    return RID_PROTOCOL_UNKNOWN;
 }
 
 /* ================================================================

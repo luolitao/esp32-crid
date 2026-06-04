@@ -16,8 +16,9 @@ extern "C" {
  * @param uav   目标无人机追踪条目
  * @param data  原始数据
  * @param len   数据长度
+ * @return      检测到的协议类型（RID_PROTOCOL_UNKNOWN 表示解码失败）
  */
-void crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t len);
+rid_protocol_t crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t len);
 
 /**
  * 从 ODID_UAS_Data 提取数据到分层结构体 (rid_location_t 等)

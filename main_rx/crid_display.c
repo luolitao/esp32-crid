@@ -197,6 +197,7 @@ static const char *get_protocol_name(uint8_t p) {
     switch (p) {
         case RID_PROTOCOL_ASTM_F3411: return "ASTM F3411";
         case RID_PROTOCOL_ASD_STAN:   return "ASD-STAN";
+        case RID_PROTOCOL_GB42590:    return "GB 42590";
         default:                      return "Unknown";
     }
 }

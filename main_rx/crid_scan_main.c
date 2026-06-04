@@ -133,10 +133,14 @@ static void parser_task(void *pvParameter) {
         uav->oui[2] = msg.oui[2];
         uav->oui_type = msg.oui_type;
         uav->transport = (uint8_t)GET_RID_TRANSPORT(msg.oui[0], msg.oui[1], msg.oui[2]);
-        uav->protocol = RID_PROTOCOL_ASTM_F3411;
 
-        // 解码
-        crid_parser_decode(uav, msg.data, msg.data_len);
+        // 解码（解析器内部自动识别协议并返回）
+        rid_protocol_t detected_proto = crid_parser_decode(uav, msg.data, msg.data_len);
+
+        // 仅解码成功时更新协议类型，失败则保持上次已知的协议
+        if (detected_proto != RID_PROTOCOL_UNKNOWN) {
+            uav->protocol = (uint8_t)detected_proto;
+        }
 
         // 提取分层数据（供显示层使用）
         crid_parser_extract_layered(uav);

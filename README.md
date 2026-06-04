@@ -4,7 +4,7 @@
 
 ## 功能
 
-- **接收器 (Scanner)**：Wi-Fi 混杂模式抓包，解析 ASTM F3411-22 / ASD-STAN prEN 4709-002 / GB 42590-2023 标准的 Remote ID 信号。所有输出以 JSON 格式通过串口输出，每行一条完整的 JSON 对象。支持双端口输出：UAV 数据走 UART1（GPIO17），调试信息走 USB CDC。
+- **接收器 (Scanner)**：Wi-Fi 混杂模式抓包，使用 OpenDroneID 库双协议解析 ASTM F3411-22a / ASD-STAN prEN 4709-002 / GB 42590-2023 标准的 Remote ID 信号。所有输出以 JSON 格式通过串口输出，每行一条完整的 JSON 对象。支持双端口输出：UAV 数据走 UART1（GPIO17），调试信息走 USB CDC。
 - **发射器 (Simulator)**：模拟无人机广播 Beacon 帧（巡游路径），Vendor IE 包含 Message Counter + Packed 消息。
 
 ## 构建
@@ -169,9 +169,11 @@ python3 tools/json_monitor.py --no-summary
 
 ## 协议支持
 
-| 标准 | OUI | 格式 |
-|------|-----|------|
-| ASTM F3411-22a | `FA:0B:BC` | Message Pack（`0xF2`），Message Counter + Packed 消息 |
-| GB 42590-2023 | `FA:0B:BC` | 国标格式（`0xF1`），Message Counter + 3 字节管理信息 + 消息体 |
+使用 OpenDroneID 库实现双协议解析：
 
-> 所有 Wi-Fi Beacon 标准统一使用 OUI `FA:0B:BC`。解析器通过 Message Pack 首字节自动识别 ASTM（`0xF2`）和国标（`0xF1`）格式。
+| 标准 | OUI | 格式 | 解析方式 |
+|------|-----|------|---------|
+| ASTM F3411-22a | `FA:0B:BC` | Message Pack（`0xF2`），Message Counter + Packed 消息 | `odid_message_process_pack()` |
+| GB 42590-2023 | `FA:0B:BC` | 国标格式（`0xF1`），Message Counter + 3 字节管理信息 + 消息体 | 转换为 ASTM 兼容头部后调用 `odid_message_process_pack()` |
+
+> 所有 Wi-Fi Beacon 标准统一使用 OUI `FA:0B:BC`。解析器通过 Message Pack 首字节自动识别 ASTM（`0xF2`）和国标（`0xF1`）格式，解码后 `protocol` 字段分别输出 `"ASTM F3411"` 和 `"GB 42590"`。
