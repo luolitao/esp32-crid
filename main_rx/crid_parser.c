@@ -141,10 +141,10 @@ static int decode_gb46750_payload(gb46750_data_t *gb,
                         gb->has_rcs_loc_type = true;
                         offset += 1;
                         break;
-                    case 2: // 0x04: 006 遥控站位置 (M) — 8字节，小端序，int32×1e7 (lat|lon)
+                    case 2: // 0x04: 006 遥控站位置 (M) — 8字节，小端序，int32×1e7 (lon|lat)
                         if (offset + 8 > content_len) return items_parsed;
-                        gb->rcs_latitude  = le32s(&content[offset])     / 1e7;
-                        gb->rcs_longitude = le32s(&content[offset + 4]) / 1e7;
+                        gb->rcs_longitude = le32s(&content[offset])     / 1e7;
+                        gb->rcs_latitude  = le32s(&content[offset + 4]) / 1e7;
                         gb->has_rcs_location = true;
                         offset += 8;
                         break;
@@ -158,10 +158,10 @@ static int decode_gb46750_payload(gb46750_data_t *gb,
             } else if (byte_idx == 1) {
                 // ---- 标识字节2 ----
                 switch (bit) {
-                    case 7: // 0x80: 008 民用无人驾驶航空器位置 (M) — 8字节，小端序，int32×1e7 (lat|lon)
+                    case 7: // 0x80: 008 民用无人驾驶航空器位置 (M) — 8字节，小端序，int32×1e7 (lon|lat)
                         if (offset + 8 > content_len) return items_parsed;
-                        gb->uav_latitude  = le32s(&content[offset])     / 1e7;
-                        gb->uav_longitude = le32s(&content[offset + 4]) / 1e7;
+                        gb->uav_longitude = le32s(&content[offset])     / 1e7;
+                        gb->uav_latitude  = le32s(&content[offset + 4]) / 1e7;
                         gb->has_uav_location = true;
                         offset += 8;
                         break;
@@ -340,7 +340,7 @@ static bool decode_gb_format(uav_track_t *uav, const uint8_t *data, uint8_t len,
 rid_protocol_t crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t len) {
     if (len < 1) return RID_PROTOCOL_UNKNOWN;
 
-    // 策略 1: GB 46750-2023 国标格式
+    // 策略 1: GB 46750-2025 国标格式
     //         格式: [MessageCounter(1)] [0xFF data_type(1)] [版本号(1)] [数据内容长度(1)] [数据标识(3)] [数据内容(变长)]
     //         检测条件: data[1] == 0xFF 且版本号高3位 == 0x1
     //         注: data[3] = 数据内容长度（字节数），不是数据标识长度
