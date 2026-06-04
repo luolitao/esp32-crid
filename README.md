@@ -4,7 +4,7 @@
 
 ## 功能
 
-- **接收器 (Scanner)**：Wi-Fi 混杂模式抓包，解析 ASTM F3411-22 / ASD-STAN prEN 4709-002 标准的 Remote ID 信号。所有输出以 JSON 格式通过串口输出，每行一条完整的 JSON 对象。支持双端口输出：UAV 数据走 UART1（GPIO17），调试信息走 USB CDC。
+- **接收器 (Scanner)**：Wi-Fi 混杂模式抓包，解析 ASTM F3411-22 / ASD-STAN prEN 4709-002 / GB 42590-2023 标准的 Remote ID 信号。所有输出以 JSON 格式通过串口输出，每行一条完整的 JSON 对象。支持双端口输出：UAV 数据走 UART1（GPIO17），调试信息走 USB CDC。
 - **发射器 (Simulator)**：模拟无人机广播 Beacon 帧（巡游路径），Vendor IE 包含 Message Counter + Packed 消息。
 
 ## 构建
@@ -38,7 +38,8 @@ idf.py build
 │   └── crid_patrol.c/h           # 巡游路径模拟
 ├── components/opendroneid/       # OpenDroneID 官方库（解码核心）
 ├── partition_table/              # 分区表
-├── archive/                      # 历史版本和独立工具
+├── tools/                        # 上位机工具
+│   └── json_monitor.py           # 串口 JSON 监视器（实时展示 + 退出摘要）
 ├── CMakeLists.txt                # 根构建文件（通过 MAIN_DIR 切换目标）
 ├── sdkconfig.defaults            # 默认配置覆盖
 └── dependencies.lock             # 依赖锁定
@@ -48,7 +49,7 @@ idf.py build
 
 | 参数 | 值 |
 |------|-----|
-| OUI | `FA:0B:BC` |
+| OUI | `FA:0B:BC`（国标）/ `FF:FF:5F`（ASTM） |
 | Vendor Type | `0x0D` |
 | Wi-Fi 信道 | 6（2.437 GHz） |
 | 广播间隔 | 1 Hz |
@@ -131,3 +132,46 @@ idf.py build
 - 所有枚举值使用 snake_case 字符串（如 `"serial_number"`、`"airborne"`），便于下游解析
 - 未获取到的字段为 `null`
 - 字符串字段经过 JSON 转义，安全可解析
+
+## 上位机监视工具
+
+`tools/json_monitor.py` 从串口读取 ESP32 的 JSON 输出并实时展示。
+
+```bash
+# 安装依赖
+pip install pyserial
+
+# 自动检测串口，默认仅显示 UAV 数据
+python3 tools/json_monitor.py
+
+# 指定串口和模式
+python3 tools/json_monitor.py -p /dev/tty.usbserial-A5069RR4 -m data
+python3 tools/json_monitor.py -m debug      # 仅调试信息（启动/告警/解码失败）
+python3 tools/json_monitor.py -m static     # 仅静态消息（basic_id/self_id/operator_id/system/auth，自动去重）
+python3 tools/json_monitor.py -m all        # 所有事件
+
+# 退出时不显示摘要
+python3 tools/json_monitor.py --no-summary
+```
+
+### 显示模式
+
+| 模式 | 说明 |
+|------|------|
+| `data`（默认） | UAV 解析数据：discovery / update / status / timeout |
+| `debug` | 调试信息：startup / warning / error / debug / decode_fail |
+| `static` | 仅无人机静态消息（basic_id、self_id、operator_id、system、auth），每个 MAC 每种字段只显示一次 |
+| `all` | 全部事件 |
+
+### 退出摘要
+
+按 `Ctrl+C` 退出时自动打印会话摘要，包括运行时长、发现/活跃 UAV 数量、解码失败计数、全局状态快照、每个 UAV 的详细信息和活跃状态。可用 `--no-summary` 跳过。
+
+## 协议支持
+
+| 标准 | OUI | 格式 |
+|------|-----|------|
+| ASTM F3411-22a | `FF:FF:5F` | Message Pack（`0xF2`），Message Counter + Packed 消息 |
+| GB 42590-2023 | `FA:0B:BC` | 国标格式（`0xF1`），Message Counter + 3 字节管理信息 + 消息体 |
+
+> 解析器自动识别 ASTM（`0xF2`）和国标（`0xF1`）格式，无需手动切换。

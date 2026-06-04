@@ -31,7 +31,7 @@ jobs:
       with:
         esp_idf_version: v6.0.1 # 指定你使用的 ESP-IDF 版本，如 v5.2.1, v5.3 等
         target: esp32s3         # 目标芯片：esp32, esp32s2, esp32s3, esp32c3 等
-        path: '.'               # 项目根目录
+        path: './main_rx'               # 项目根目录
         command: idf.py build   # 编译命令
 
     - name: Upload Build Artifacts
