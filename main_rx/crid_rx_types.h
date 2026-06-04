@@ -2,7 +2,7 @@
  * crid_rx_types.h — 接收端公共类型定义与配置常量
  *
  * ESP32 Remote ID Scanner
- * Standards: ASTM F3411-22a / ASD-STAN prEN 4709-002 / GB 42590-2023
+ * Standards: ASTM F3411-22a / ASD-STAN prEN 4709-002 / GB 42590-2023 / GB 46750-2023
  */
 
 #ifndef CRID_RX_TYPES_H
@@ -25,8 +25,9 @@
 /* ================================================================
  * 协议标准 OUI 定义
  *
- * Wi-Fi Beacon 统一使用 FA:0B:BC（ASTM F3411-22a / ASD-STAN / GB 42590-2023）
- * 不同协议通过 Message Pack 首字节区分：ASTM=0xF2，国标=0xF1
+ * Wi-Fi Beacon 统一使用 FA:0B:BC（ASTM F3411-22a / ASD-STAN / GB 42590-2023 / GB 46750-2023）
+ * ASTM 与国标在 Wire 格式上相同（OUI FA:0B:BC, Vendor Type 0x0D, Packed 消息格式），
+ * 无法从数据字节直接区分协议类型。
  *
  * OUI 来源：
  *   RID_TRANSPORT_WIFI_BEACON_OUI  = 0xFA0BBC  (Wi-Fi Beacon)
@@ -109,6 +110,7 @@ typedef enum {
     RID_PROTOCOL_ASTM_F3411 = 1,
     RID_PROTOCOL_ASD_STAN   = 2,
     RID_PROTOCOL_GB42590    = 3,   // 中国 GB 42590-2023
+    RID_PROTOCOL_GB46750    = 4,   // 中国 GB 46750-2023
 } rid_protocol_t;
 
 /* ================================================================
@@ -180,6 +182,94 @@ typedef struct {
     uint8_t  ua_type;                 // UA 类型 (ODID_uatype_t)
     char     uas_id[21];              // UAS ID (最多 20 字符 + null)
 } rid_basic_id_t;
+
+/* ================================================================
+ * GB 46750-2023 专用数据结构
+ *
+ * 数据标识位表定义了 21 个数据内容项（001-021），
+ * 每个标识位为 1 表示对应数据项存在。
+ *
+ * 数据内容按标识位顺序排列在标识字节之后，
+ * 每项的长度由数据类型决定。
+ * ================================================================ */
+
+// GB 46750 解析后的无人机数据
+typedef struct {
+    bool     valid;                   // 是否已解析
+
+    // --- 标识字节1 ---
+    bool     has_unique_id;           // 001 唯一产品识别码 (M)，固定20字节 ASCII，大端序
+    char     unique_id[21];           // 唯一产品识别码字符串 (20 + null)
+
+    bool     has_realname_flag;       // 002 实名登记标志 (M)，固定8字节 ASCII，大端序
+    char     realname_id[9];          // 实名登记号码后8位 (8 + null)
+
+    bool     has_operation_category;  // 003 运行类别 (O)
+    uint8_t  operation_category;      // 运行类别枚举
+
+    bool     has_ua_category;         // 004 民用无人驾驶航空器分类 (M)
+    uint8_t  ua_category;             // 分类枚举
+
+    bool     has_rcs_loc_type;        // 005 遥控站位置类型 (M)
+    uint8_t  rcs_loc_type;            // 位置类型枚举
+
+    bool     has_rcs_location;        // 006 遥控站位置 (M)
+    double   rcs_latitude;            // 遥控站纬度
+    double   rcs_longitude;           // 遥控站经度
+
+    bool     has_rcs_altitude;        // 007 遥控站高度 (M)
+    float    rcs_altitude;            // 遥控站大地高度 (m)
+
+    // --- 标识字节2 ---
+    bool     has_uav_location;        // 008 民用无人驾驶航空器位置 (M)
+    double   uav_latitude;            // 无人机纬度
+    double   uav_longitude;           // 无人机经度
+
+    bool     has_track_angle;         // 009 航迹角 (M)
+    float    track_angle;             // 航迹角 (0°~360°)
+
+    bool     has_ground_speed;        // 010 地速 (M)
+    float    ground_speed;            // 地速 (m/s)
+
+    bool     has_relative_height;     // 011 相对高度 (O)
+    float    relative_height;         // 相对高度 (m)
+
+    bool     has_vertical_speed;      // 012 垂直速度 (O)
+    float    vertical_speed;          // 垂直速度 (m/s, 正=上升)
+
+    bool     has_geo_altitude;        // 013 大地高度 (M)
+    float    geo_altitude;            // 大地高度 WGS84 (m)
+
+    bool     has_baro_altitude;       // 014 气压高度 (O)
+    float    baro_altitude;           // 气压高度 (m)
+
+    // --- 标识字节3 ---
+    bool     has_operation_status;    // 015 运行状态 (M)
+    uint8_t  operation_status;        // 运行状态枚举
+
+    bool     has_coord_system;        // 016 坐标系类型 (M)
+    uint8_t  coord_system;            // 坐标系类型枚举
+
+    bool     has_h_accuracy;          // 017 水平精度 (M)
+    uint8_t  h_accuracy;              // 水平精度枚举
+
+    bool     has_v_accuracy;          // 018 垂直精度 (M)
+    uint8_t  v_accuracy;              // 垂直精度枚举
+
+    bool     has_speed_accuracy;      // 019 速度精度 (M)
+    uint8_t  speed_accuracy;          // 速度精度枚举
+
+    bool     has_timestamp;           // 020 时间戳 (M)，6字节小端序，Unix毫秒时间戳
+    uint64_t timestamp_ms;            // Unix 毫秒时间戳
+
+    bool     has_ts_accuracy;         // 021 时间戳精度 (M)
+    uint8_t  ts_accuracy;             // 时间戳精度枚举
+
+    // 扩展标志位
+    bool     has_ext_byte1;           // 标识字节1有扩展
+    bool     has_ext_byte2;           // 标识字节2有扩展
+    bool     has_ext_byte3;           // 标识字节3有扩展
+} gb46750_data_t;
 
 /* ================================================================
  * 扫描配置常量
@@ -265,6 +355,9 @@ typedef struct {
     rid_system_info_t system;           // 系统/操作员信息
     rid_self_id_t     self_id;          // Self-ID 描述
     rid_operator_id_t operator_id;      // 操作员 ID
+
+    // GB 46750-2023 专用数据
+    gb46750_data_t    gb46750;          // GB 46750 解析数据
 
     // 统计
     uint32_t msg_count;                 // 累计消息数

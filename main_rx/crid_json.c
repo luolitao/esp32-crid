@@ -229,7 +229,7 @@ void json_startup_banner(const char *version, const char *build_date,
                          int max_uavs, uint32_t free_heap) {
     DEBUG_PRINTF("{\"evt\":\"%s\",\"ts\":%lu,\"name\":\"ESP32 Remote ID Scanner\","
            "\"version\":\"%s\",\"build_date\":\"%s\",\"build_time\":\"%s\","
-           "\"standards\":[\"ASTM F3411-22a\",\"ASD-STAN prEN 4709-002\",\"GB 42590-2023\"],"
+           "\"standards\":[\"ASTM F3411-22a\",\"ASD-STAN prEN 4709-002\",\"GB 42590-2023\",\"GB 46750-2023\"],"
            "\"channel\":%u,\"max_uavs\":%d,\"free_heap\":%lu}\n",
            evt_name(JSON_EVT_STARTUP),
            (unsigned long)esp_log_timestamp(),
@@ -520,6 +520,88 @@ static void json_uav_auth_impl(const uav_track_t *uav, bool is_data) {
     else         DBG_PRINTF("]");
 }
 
+static void json_uav_gb46750_impl(const uav_track_t *uav, bool is_data) {
+    if (!uav->gb46750.valid) {
+        if (is_data) DAT_PRINTF(",\"gb46750\":null");
+        else         DBG_PRINTF(",\"gb46750\":null");
+        return;
+    }
+    const gb46750_data_t *gb = &uav->gb46750;
+    if (is_data) DAT_PRINTF(",\"gb46750\":{");
+    else         DBG_PRINTF(",\"gb46750\":{");
+
+    bool first = true;
+#define GB_FIELD_INT(name, cond, val) do { \
+    if (cond) { \
+        if (!first) { if (is_data) DAT_PRINTF(","); else DBG_PRINTF(","); } \
+        if (is_data) DAT_PRINTF("\"" name "\":%u", (unsigned)(val)); \
+        else         DBG_PRINTF("\"" name "\":%u", (unsigned)(val)); \
+        first = false; \
+    } \
+} while(0)
+
+#define GB_FIELD_FLOAT(name, cond, val) do { \
+    if (cond) { \
+        if (!first) { if (is_data) DAT_PRINTF(","); else DBG_PRINTF(","); } \
+        if (is_data) DAT_PRINTF("\"" name "\":%.7f", (double)(val)); \
+        else         DBG_PRINTF("\"" name "\":%.7f", (double)(val)); \
+        first = false; \
+    } \
+} while(0)
+
+#define GB_FIELD_STR(name, cond, val) do { \
+    if (cond) { \
+        char _esc[30]; \
+        json_escape_str(_esc, val, sizeof(_esc)); \
+        if (!first) { if (is_data) DAT_PRINTF(","); else DBG_PRINTF(","); } \
+        if (is_data) DAT_PRINTF("\"" name "\":\"%s\"", _esc); \
+        else         DBG_PRINTF("\"" name "\":\"%s\"", _esc); \
+        first = false; \
+    } \
+} while(0)
+
+#define GB_FIELD_U64(name, cond, val) do { \
+    if (cond) { \
+        if (!first) { if (is_data) DAT_PRINTF(","); else DBG_PRINTF(","); } \
+        if (is_data) DAT_PRINTF("\"" name "\":%llu", (unsigned long long)(val)); \
+        else         DBG_PRINTF("\"" name "\":%llu", (unsigned long long)(val)); \
+        first = false; \
+    } \
+} while(0)
+
+    GB_FIELD_STR("unique_id", gb->has_unique_id, gb->unique_id);
+    GB_FIELD_STR("realname_id", gb->has_realname_flag, gb->realname_id);
+    GB_FIELD_INT("operation_category", gb->has_operation_category, gb->operation_category);
+    GB_FIELD_INT("ua_category", gb->has_ua_category, gb->ua_category);
+    GB_FIELD_INT("rcs_loc_type", gb->has_rcs_loc_type, gb->rcs_loc_type);
+    GB_FIELD_FLOAT("rcs_latitude", gb->has_rcs_location, gb->rcs_latitude);
+    GB_FIELD_FLOAT("rcs_longitude", gb->has_rcs_location, gb->rcs_longitude);
+    GB_FIELD_FLOAT("rcs_altitude", gb->has_rcs_altitude, gb->rcs_altitude);
+    GB_FIELD_FLOAT("uav_latitude", gb->has_uav_location, gb->uav_latitude);
+    GB_FIELD_FLOAT("uav_longitude", gb->has_uav_location, gb->uav_longitude);
+    GB_FIELD_FLOAT("track_angle", gb->has_track_angle, gb->track_angle);
+    GB_FIELD_FLOAT("ground_speed", gb->has_ground_speed, gb->ground_speed);
+    GB_FIELD_FLOAT("relative_height", gb->has_relative_height, gb->relative_height);
+    GB_FIELD_FLOAT("vertical_speed", gb->has_vertical_speed, gb->vertical_speed);
+    GB_FIELD_FLOAT("geo_altitude", gb->has_geo_altitude, gb->geo_altitude);
+    GB_FIELD_FLOAT("baro_altitude", gb->has_baro_altitude, gb->baro_altitude);
+    GB_FIELD_INT("operation_status", gb->has_operation_status, gb->operation_status);
+    GB_FIELD_INT("coord_system", gb->has_coord_system, gb->coord_system);
+    GB_FIELD_INT("h_accuracy", gb->has_h_accuracy, gb->h_accuracy);
+    GB_FIELD_INT("v_accuracy", gb->has_v_accuracy, gb->v_accuracy);
+    GB_FIELD_INT("speed_accuracy", gb->has_speed_accuracy, gb->speed_accuracy);
+    GB_FIELD_U64("timestamp_ms", gb->has_timestamp, gb->timestamp_ms);
+    GB_FIELD_INT("ts_accuracy", gb->has_ts_accuracy, gb->ts_accuracy);
+
+#undef GB_FIELD_INT
+#undef GB_FIELD_FLOAT
+#undef GB_FIELD_STR
+#undef GB_FIELD_U64
+
+    if (is_data) DAT_PRINTF("}");
+    else         DBG_PRINTF("}");
+}
+
 static void json_uav_basic_id_all_impl(const uav_track_t *uav, bool is_data) {
     if (is_data) DAT_PRINTF(",\"basic_ids\":[");
     else         DBG_PRINTF(",\"basic_ids\":[");
@@ -565,6 +647,7 @@ void json_uav_update(const uav_track_t *uav) {
     json_uav_self_id_impl(uav, true);
     json_uav_operator_id_impl(uav, true);
     json_uav_auth_impl(uav, true);
+    json_uav_gb46750_impl(uav, true);
     DAT_PRINTF("}\n");
 }
 
@@ -590,6 +673,7 @@ void json_uav_detail(const uav_track_t *uav) {
     json_uav_self_id_impl(uav, true);
     json_uav_operator_id_impl(uav, true);
     json_uav_auth_impl(uav, true);
+    json_uav_gb46750_impl(uav, true);
     DAT_PRINTF("}\n");
 }
 

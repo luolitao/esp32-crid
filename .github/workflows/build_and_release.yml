@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     tags:
-      - 'v*' # 当推送 v1.0.0 这样的标签时触发发布
+      - 'v*'
   pull_request:
     branches: [ main ]
 
@@ -14,28 +14,29 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6  # ✅ 升级: v4 → v6 (支持 Node.js 24) [[1]]
+      with:
+        submodules: 'recursive'
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6  # ✅ 升级: v5 → v6 (支持 Node.js 24) [[13]]
       with:
         python-version: '3.9'
 
     - name: Install dependencies
       run: |
         pip install setuptools wheel
-        # 如果项目需要特定的 Python 包，在这里安装
 
     - name: ESP-IDF Build
-      uses: espressif/esp-idf-ci-action@v1
+      uses: espressif/esp-idf-ci-action@v1  # ✅ 此 action 通过 Docker 运行，不受 Node 版本影响 [[22]]
       with:
-        esp_idf_version: v6.0.1 # 指定你使用的 ESP-IDF 版本，如 v5.2.1, v5.3 等
-        target: esp32s3         # 目标芯片：esp32, esp32s2, esp32s3, esp32c3 等
-        path: './main_rx'               # 项目根目录
-        command: idf.py build   # 编译命令
+        esp_idf_version: v5.2.1
+        target: esp32
+        path: 'main_rx'
+        command: idf.py build
 
     - name: Upload Build Artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v4  # ✅ v4 已支持 Node 24，无需升级
       with:
         name: esp32-firmware
         path: |
@@ -44,11 +45,10 @@ jobs:
           build/bootloader/*.bin
           build/partition_table/*.bin
 
-    # --- 以下为自动发布 Release 的部分 ---
+    # 自动发布 Release
     - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/v') # 只有推送 tag 时才执行
-      id: create_release
-      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v2  # ✅ 建议使用最新版
       with:
         files: |
           build/*.bin

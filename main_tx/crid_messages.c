@@ -270,7 +270,7 @@ void crid_build_operator_id_message(const cn_crid_config_t *config, uint8_t *mes
     ESP_LOGD(TAG, "Operator ID message built (%s)", config->operator_id);
 }
 
-bool crid_build_beacon_frame(const cn_crid_config_t *config,
+bool crid_build_beacon_frame(cn_crid_config_t *config,
                               uint8_t *frame, uint16_t max_len,
                               uint16_t *out_len) {
     if (config == NULL || frame == NULL || out_len == NULL) return false;
@@ -279,7 +279,7 @@ bool crid_build_beacon_frame(const cn_crid_config_t *config,
 
     // --- 预估帧长度，确保不越界 ---
     // MAC Header: 24 + Timestamp: 8 + Beacon Interval: 2 + Capability: 2 + SSID IE: 2+ssid_len
-    // + Rates IE: 2+8 + DS IE: 3 + Vendor IE: 1+1+3+1+1+3+25*6 = ~241
+    // + Rates IE: 2+8 + DS IE: 3 + Vendor IE: 1+1+3+1+1+3+25*5 = ~216
     #define BEACON_FRAME_ESTIMATED_LEN 280
     if (max_len < BEACON_FRAME_ESTIMATED_LEN) {
         ESP_LOGE(TAG, "Frame buffer too small: %u < %u", max_len, BEACON_FRAME_ESTIMATED_LEN);
@@ -341,9 +341,9 @@ bool crid_build_beacon_frame(const cn_crid_config_t *config,
     frame[pos++] = config->channel;
 
     // --- China C-RID Vendor Specific IE ---
-    // 计算打包消息长度: 头部3字节 + 6条报文 * 25字节 = 153
+    // 计算打包消息长度: 头部3字节 + 5条报文 * 25字节 = 130
     #define PACKED_MSG_HEADER_LEN 3
-    #define PACKED_MSG_COUNT      6
+    #define PACKED_MSG_COUNT      5
     #define PACKED_MSG_TOTAL_LEN (PACKED_MSG_HEADER_LEN + PACKED_MSG_COUNT * CRID_MESSAGE_SIZE)
 
     frame[pos++] = 0xDD; // Vendor Specific IE ID
@@ -357,11 +357,14 @@ bool crid_build_beacon_frame(const cn_crid_config_t *config,
     // Vendor Type: 0x0D
     frame[pos++] = CRID_VENDOR_TYPE;
 
-    // Message Counter
+    // Message Counter（每发送一条报文 +1，255 后回绕到 0）
     uint8_t msg_counter = config->message_counter;
     frame[pos++] = msg_counter;
 
-    // --- 构建打包消息 ---
+    // 递增 message_counter，uint8_t 自动 0-255 循环回绕
+    config->message_counter++;
+
+    // --- 构建打包消息（5 条报文，不含认证报文，符合 GB42590 / IB-TM-2024-01） ---
     uint8_t packed_msg[PACKED_MSG_TOTAL_LEN];
     uint8_t packed_pos = 0;
 
@@ -369,35 +372,34 @@ bool crid_build_beacon_frame(const cn_crid_config_t *config,
     packed_msg[packed_pos++] = 0xF1;
     // 每条消息长度: 25
     packed_msg[packed_pos++] = CRID_MESSAGE_SIZE;
-    // 消息数量: 6
+    // 消息数量: 5
     packed_msg[packed_pos++] = PACKED_MSG_COUNT;
 
-    // 构建六条报文
+    // 1. Basic ID 报文
     uint8_t basic_msg[CRID_MESSAGE_SIZE];
     crid_build_basic_id_message(config, basic_msg);
     memcpy(&packed_msg[packed_pos], basic_msg, CRID_MESSAGE_SIZE);
     packed_pos += CRID_MESSAGE_SIZE;
 
+    // 2. Location 报文
     uint8_t location_msg[CRID_MESSAGE_SIZE];
     crid_build_location_message(config, location_msg);
     memcpy(&packed_msg[packed_pos], location_msg, CRID_MESSAGE_SIZE);
     packed_pos += CRID_MESSAGE_SIZE;
 
-    uint8_t auth_msg[CRID_MESSAGE_SIZE];
-    crid_build_auth_message(config, auth_msg);
-    memcpy(&packed_msg[packed_pos], auth_msg, CRID_MESSAGE_SIZE);
-    packed_pos += CRID_MESSAGE_SIZE;
-
+    // 3. Self-ID 报文
     uint8_t self_desc_msg[CRID_MESSAGE_SIZE];
     crid_build_self_desc_message(config, self_desc_msg);
     memcpy(&packed_msg[packed_pos], self_desc_msg, CRID_MESSAGE_SIZE);
     packed_pos += CRID_MESSAGE_SIZE;
 
+    // 4. System 报文
     uint8_t system_msg[CRID_MESSAGE_SIZE];
     crid_build_system_message(config, system_msg);
     memcpy(&packed_msg[packed_pos], system_msg, CRID_MESSAGE_SIZE);
     packed_pos += CRID_MESSAGE_SIZE;
 
+    // 5. Operator ID 报文
     uint8_t operator_id_msg[CRID_MESSAGE_SIZE];
     crid_build_operator_id_message(config, operator_id_msg);
     memcpy(&packed_msg[packed_pos], operator_id_msg, CRID_MESSAGE_SIZE);

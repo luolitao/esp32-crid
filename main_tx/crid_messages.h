@@ -59,7 +59,7 @@ void crid_build_operator_id_message(const cn_crid_config_t *config, uint8_t *mes
  * @param[out] out_len 实际帧长度
  * @return true 成功, false 缓冲区不足
  */
-bool crid_build_beacon_frame(const cn_crid_config_t *config,
+bool crid_build_beacon_frame(cn_crid_config_t *config,
                              uint8_t *frame, uint16_t max_len,
                              uint16_t *out_len);
 

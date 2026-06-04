@@ -198,6 +198,7 @@ static const char *get_protocol_name(uint8_t p) {
         case RID_PROTOCOL_ASTM_F3411: return "ASTM F3411";
         case RID_PROTOCOL_ASD_STAN:   return "ASD-STAN";
         case RID_PROTOCOL_GB42590:    return "GB 42590";
+        case RID_PROTOCOL_GB46750:    return "GB 46750";
         default:                      return "Unknown";
     }
 }
@@ -344,6 +345,81 @@ static void print_auth(const uav_track_t *uav) {
     }
 }
 
+static void print_gb46750(const uav_track_t *uav) {
+    if (!uav->gb46750.valid) return;
+    const gb46750_data_t *gb = &uav->gb46750;
+
+    ESP_LOGI(TAG, "  GB 46750 Data:");
+
+    if (gb->has_unique_id) {
+        ESP_LOGI(TAG, "    Unique ID:     '%s'", gb->unique_id);
+    }
+    if (gb->has_realname_flag) {
+        ESP_LOGI(TAG, "    Realname ID:    '%s'", gb->realname_id);
+    }
+    if (gb->has_operation_category) {
+        ESP_LOGI(TAG, "    Operation Cat:  %u", gb->operation_category);
+    }
+    if (gb->has_ua_category) {
+        ESP_LOGI(TAG, "    UA Category:    %u", gb->ua_category);
+    }
+    if (gb->has_rcs_loc_type) {
+        ESP_LOGI(TAG, "    RCS Loc Type:   %u", gb->rcs_loc_type);
+    }
+    if (gb->has_rcs_location) {
+        ESP_LOGI(TAG, "    RCS Position:   %.7f°, %.7f°", gb->rcs_latitude, gb->rcs_longitude);
+    }
+    if (gb->has_rcs_altitude) {
+        ESP_LOGI(TAG, "    RCS Altitude:   %.1f m", gb->rcs_altitude);
+    }
+    if (gb->has_uav_location) {
+        ESP_LOGI(TAG, "    UAV Position:   %.7f°, %.7f°", gb->uav_latitude, gb->uav_longitude);
+    }
+    if (gb->has_track_angle) {
+        ESP_LOGI(TAG, "    Track Angle:    %.1f°", gb->track_angle);
+    }
+    if (gb->has_ground_speed) {
+        ESP_LOGI(TAG, "    Ground Speed:   %.2f m/s", gb->ground_speed);
+    }
+    if (gb->has_relative_height) {
+        ESP_LOGI(TAG, "    Rel Height:     %.1f m", gb->relative_height);
+    }
+    if (gb->has_vertical_speed) {
+        ESP_LOGI(TAG, "    Vertical Speed: %.2f m/s", gb->vertical_speed);
+    }
+    if (gb->has_geo_altitude) {
+        ESP_LOGI(TAG, "    Geo Altitude:   %.1f m", gb->geo_altitude);
+    }
+    if (gb->has_baro_altitude) {
+        ESP_LOGI(TAG, "    Baro Altitude:  %.1f m", gb->baro_altitude);
+    }
+    if (gb->has_operation_status) {
+        ESP_LOGI(TAG, "    Op Status:      %u", gb->operation_status);
+    }
+    if (gb->has_coord_system) {
+        ESP_LOGI(TAG, "    Coord System:   %u", gb->coord_system);
+    }
+    if (gb->has_h_accuracy) {
+        ESP_LOGI(TAG, "    H Accuracy:     %u", gb->h_accuracy);
+    }
+    if (gb->has_v_accuracy) {
+        ESP_LOGI(TAG, "    V Accuracy:     %u", gb->v_accuracy);
+    }
+    if (gb->has_speed_accuracy) {
+        ESP_LOGI(TAG, "    Speed Accuracy: %u", gb->speed_accuracy);
+    }
+    if (gb->has_timestamp) {
+        ESP_LOGI(TAG, "    Timestamp:      %llu ms", (unsigned long long)gb->timestamp_ms);
+    }
+    if (gb->has_ts_accuracy) {
+        ESP_LOGI(TAG, "    TS Accuracy:    %u", gb->ts_accuracy);
+    }
+    if (gb->has_ext_byte1 || gb->has_ext_byte2 || gb->has_ext_byte3) {
+        ESP_LOGI(TAG, "    Ext Flags:      byte1=%d byte2=%d byte3=%d",
+                 gb->has_ext_byte1, gb->has_ext_byte2, gb->has_ext_byte3);
+    }
+}
+
 void crid_display_uav_detail(const uav_track_t *uav) {
     char mac_str[18];
     crid_display_mac_str(uav->mac, mac_str, sizeof(mac_str));
@@ -361,6 +437,7 @@ void crid_display_uav_detail(const uav_track_t *uav) {
     print_self_id(uav);
     print_operator_id(uav);
     print_auth(uav);
+    print_gb46750(uav);
 
     ESP_LOGI(TAG, "========================================");
 }
