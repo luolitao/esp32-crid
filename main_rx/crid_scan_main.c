@@ -2,7 +2,7 @@
  * crid_scan_main.c — Remote ID Scanner 主入口
  *
  * ESP32 Remote ID Scanner
- * Standards: ASTM F3411-22 / ASD-STAN prEN 4709-002
+ * Standards: ASTM F3411-22a / ASD-STAN prEN 4709-002 / GB 42590-2023
  *
  * 架构：
  *   - crid_sniffer:   Wi-Fi 混杂模式抓包，ISR 安全回调

@@ -49,7 +49,7 @@ idf.py build
 
 | 参数 | 值 |
 |------|-----|
-| OUI | `FA:0B:BC`（国标）/ `FF:FF:5F`（ASTM） |
+| OUI | `FA:0B:BC`（ASTM / 国标统一） |
 | Vendor Type | `0x0D` |
 | Wi-Fi 信道 | 6（2.437 GHz） |
 | 广播间隔 | 1 Hz |
@@ -171,7 +171,7 @@ python3 tools/json_monitor.py --no-summary
 
 | 标准 | OUI | 格式 |
 |------|-----|------|
-| ASTM F3411-22a | `FF:FF:5F` | Message Pack（`0xF2`），Message Counter + Packed 消息 |
+| ASTM F3411-22a | `FA:0B:BC` | Message Pack（`0xF2`），Message Counter + Packed 消息 |
 | GB 42590-2023 | `FA:0B:BC` | 国标格式（`0xF1`），Message Counter + 3 字节管理信息 + 消息体 |
 
-> 解析器自动识别 ASTM（`0xF2`）和国标（`0xF1`）格式，无需手动切换。
+> 所有 Wi-Fi Beacon 标准统一使用 OUI `FA:0B:BC`。解析器通过 Message Pack 首字节自动识别 ASTM（`0xF2`）和国标（`0xF1`）格式。

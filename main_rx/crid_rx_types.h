@@ -2,7 +2,7 @@
  * crid_rx_types.h — 接收端公共类型定义与配置常量
  *
  * ESP32 Remote ID Scanner
- * Standards: ASTM F3411-22 / ASD-STAN prEN 4709-002
+ * Standards: ASTM F3411-22a / ASD-STAN prEN 4709-002 / GB 42590-2023
  */
 
 #ifndef CRID_RX_TYPES_H
@@ -23,8 +23,10 @@
 #define CRID_BUILD_TIME        __TIME__
 
 /* ================================================================
- * 协议标准 OUI 定义 (基于 ASTM F3411-22a)
- * ================================================================
+ * 协议标准 OUI 定义
+ *
+ * Wi-Fi Beacon 统一使用 FA:0B:BC（ASTM F3411-22a / ASD-STAN / GB 42590-2023）
+ * 不同协议通过 Message Pack 首字节区分：ASTM=0xF2，国标=0xF1
  *
  * OUI 来源：
  *   RID_TRANSPORT_WIFI_BEACON_OUI  = 0xFA0BBC  (Wi-Fi Beacon)
@@ -50,14 +52,6 @@
 #define OUI_BLE_2  0xFA
 
 // ---- 厂商扩展 OUI ----
-// ASTM 旧标准 (FF:FF:5F)
-#define OUI_ASTM_OLD_0  0xFF
-#define OUI_ASTM_OLD_1  0xFF
-#define OUI_ASTM_OLD_2  0x5F
-// 其他 ASTM 兼容 OUI
-#define OUI_ASTM_90_0  0x90
-#define OUI_ASTM_90_1  0x3A
-#define OUI_ASTM_90_2  0xE6
 // DJI 厂商
 #define OUI_DJI_60_0  0x60
 #define OUI_DJI_60_1  0x60
@@ -70,12 +64,11 @@
 #define OUI_DJI_34_2  0x62
 
 // 判断是否为任一 Remote ID OUI
+// 注：Wi-Fi Beacon 标准 OUI 统一为 FA:0B:BC（ASTM / ASD-STAN / GB 42590 均使用此 OUI）
 #define IS_RID_OUI(o0, o1, o2) \
     (((o0) == OUI_BEACON_0   && (o1) == OUI_BEACON_1   && (o2) == OUI_BEACON_2)   || \
      ((o0) == OUI_NAN_0      && (o1) == OUI_NAN_1      && (o2) == OUI_NAN_2)      || \
      ((o0) == OUI_BLE_0      && (o1) == OUI_BLE_1      && (o2) == OUI_BLE_2)      || \
-     ((o0) == OUI_ASTM_OLD_0 && (o1) == OUI_ASTM_OLD_1 && (o2) == OUI_ASTM_OLD_2) || \
-     ((o0) == OUI_ASTM_90_0  && (o1) == OUI_ASTM_90_1  && (o2) == OUI_ASTM_90_2)  || \
      ((o0) == OUI_DJI_60_0   && (o1) == OUI_DJI_60_1   && (o2) == OUI_DJI_60_2)   || \
      ((o0) == OUI_DJI_48_0   && (o1) == OUI_DJI_48_1   && (o2) == OUI_DJI_48_2)   || \
      ((o0) == OUI_DJI_34_0   && (o1) == OUI_DJI_34_1   && (o2) == OUI_DJI_34_2))
@@ -238,7 +231,7 @@ typedef struct {
     uint8_t  oui_type;          // OUI 类型字节
     uint16_t data_len;          // 有效数据长度
     uint8_t  data[256];         // Vendor Specific IE 数据 (最大255)
-    bool     is_rid;            // 是否为 RID (FA:0B:BC) 消息
+    bool     is_rid;            // 是否为 RID 消息
     uint8_t  oui[3];            // 完整 OUI 字节 (用于非 RID 诊断)
     sniffer_msg_type_t msg_type; // 消息类型
     uint8_t  ssid_len;          // SSID 长度 (0-32)
