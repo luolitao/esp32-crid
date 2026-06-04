@@ -175,9 +175,11 @@ python3 tools/json_monitor.py --no-summary
 |------|-----|------|---------|
 | ASTM F3411-22a | `FA:0B:BC` | ODID_MessagePack_encoded，Message Counter + Packed 消息 | `odid_message_process_pack()` |
 | GB 42590-2023 | `FA:0B:BC` | 国标 Packed 格式，Message Counter + 3 字节管理信息 + 消息体 | 转为 ASTM 兼容头部后 `odid_message_process_pack()` |
-| GB 46750-2023 | `FA:0B:BC` | 国标 Packed 格式，Message Counter + 3 字节管理信息 + 消息体 | 转为 ASTM 兼容头部后 `odid_message_process_pack()` |
+| GB 46750-2023 | `FA:0B:BC` | Message Counter + 0xFF + 版本号 + 内容长度 + 数据标识(3B) + 数据内容(变长) | 自定义解析 21 个数据内容项 |
 
 > 所有 Wi-Fi Beacon 标准统一使用 OUI `FA:0B:BC`、Vendor Type `0x0D`。
-> ASTM 与国标在 Wire 格式上均以 `0xF1` 开头（ASTM 为位域编码
+> GB 46750 使用 `data[1]==0xFF` 作为数据类型标识，数据标识固定 3 字节（按位指示字段存在性），
+> 支持全部 21 个数据内容项（001-021）的解析。
+> ASTM 与 GB 42590 在 Wire 格式上均以 `0xF1` 开头（ASTM 为位域编码
 > `MessageType=0xF` + `ProtoVersion=1`，国标为独立 magic byte），
-> 但语义上需要区分协议类型。解析成功时分别标记为 `"ASTM F3411"` 或 `"GB 42590"`。
+> 但语义上需要区分协议类型。
