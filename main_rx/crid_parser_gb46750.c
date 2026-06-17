@@ -22,7 +22,7 @@ static const char *TAG = "RID_GB46750";
 #define GB46750_VER_MINOR_MASK  0x1F
 #define GB46750_VER_MAJOR_SHIFT 5
 #define GB46750_VALID_MAJOR     0x01
-#define GB46750_HEADER_LEN      7   /* Counter(1)+Magic(1)+Ver(1)+Len(1)+Flags(3) */
+#define GB46750_HEADER_LEN      6   /* Magic(1)+Ver(1)+Len(1)+Flags(3) */
 
 /* 物理量合理性校验宏 (防止错位读取产生荒谬值) */
 #define IS_VALID_LAT(lat)       ((lat) >= -90.0f && (lat) <= 90.0f)
@@ -129,12 +129,15 @@ static int decode_gb46750_payload(gb46750_data_t *gb,
                     break;
                 case 0x02:
                     if (offset + 8 > content_len) return items_parsed;
-                    float lon = le32s(&content[offset]) / 1e7;
-                    float lat = le32s(&content[offset + 4]) / 1e7;
-                    if (IS_VALID_LAT(lat) && IS_VALID_LON(lon)) {
-                        gb->rcs_longitude = lon;
-                        gb->rcs_latitude  = lat;
-                        gb->has_rcs_location = true;
+                    {
+                        // 使用独立的局部变量，避免与其他 case 的 lon/lat 冲突
+                        float rcs_lon = le32s(&content[offset]) / 1e7;
+                        float rcs_lat = le32s(&content[offset + 4]) / 1e7;
+                        if (IS_VALID_LAT(rcs_lat) && IS_VALID_LON(rcs_lon)) {
+                            gb->rcs_longitude = rcs_lon;
+                            gb->rcs_latitude  = rcs_lat;
+                            gb->has_rcs_location = true;
+                        }
                     }
                     offset += 8;
                     break;
@@ -157,13 +160,15 @@ static int decode_gb46750_payload(gb46750_data_t *gb,
                 /* 标识字节 2 */
                 case 0x0F:
                     if (offset + 8 > content_len) return items_parsed;
-                    lon = le32s(&content[offset]) / 1e7;
-                    lat = le32s(&content[offset + 4]) / 1e7;
-                    // ESP_LOGI(TAG, "UAV lon: %f, lat: %f", lon, lat);
-                    if (IS_VALID_LAT(lat) && IS_VALID_LON(lon)) {
-                        gb->uav_longitude = lon;
-                        gb->uav_latitude  = lat;
-                        gb->has_uav_location = true;
+                    {
+                        // 使用独立的局部变量
+                        float uav_lon = le32s(&content[offset]) / 1e7;
+                        float uav_lat = le32s(&content[offset + 4]) / 1e7;
+                        if (IS_VALID_LAT(uav_lat) && IS_VALID_LON(uav_lon)) {
+                            gb->uav_longitude = uav_lon;
+                            gb->uav_latitude  = uav_lat;
+                            gb->has_uav_location = true;
+                        }
                     }
                     offset += 8;
                     break;
@@ -309,13 +314,13 @@ static int decode_gb46750_payload(gb46750_data_t *gb,
 bool crid_parser_decode_gb46750(uav_track_t *uav, const uint8_t *data, uint8_t len) {
     if (!data || len < 1) return false;
 
-    /* 策略 1: GB 46750-2025 */
-    if (len >= GB46750_HEADER_LEN && data[1] == GB46750_MAGIC) {
-        uint8_t version     = data[2];
+    /* 策略 1: GB 46750-2025 (无 Counter 字节) */
+    if (len >= GB46750_HEADER_LEN && data[0] == GB46750_MAGIC) {
+        uint8_t version     = data[1];
         uint8_t major_ver   = (version >> GB46750_VER_MAJOR_SHIFT) & GB46750_VER_MAJOR_MASK;
-        uint8_t content_len = data[3];
-        const uint8_t *flags = &data[4];
-        const uint8_t *content = &data[7];
+        uint8_t content_len = data[2];
+        const uint8_t *flags = &data[3];
+        const uint8_t *content = &data[6];
 
         if (major_ver == GB46750_VALID_MAJOR && content_len <= (len - GB46750_HEADER_LEN)) {
             int items = decode_gb46750_payload(&uav->gb46750, flags, 3, content, content_len);
