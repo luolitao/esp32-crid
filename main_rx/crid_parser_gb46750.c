@@ -131,7 +131,6 @@ static int decode_gb46750_payload(gb46750_data_t *gb,
                     if (offset + 8 > content_len) return items_parsed;
                     float lon = le32s(&content[offset]) / 1e7;
                     float lat = le32s(&content[offset + 4]) / 1e7;
-                    ESP_LOGI(TAG, "RCS lon: %f, lat: %f", lon, lat);
                     if (IS_VALID_LAT(lat) && IS_VALID_LON(lon)) {
                         gb->rcs_longitude = lon;
                         gb->rcs_latitude  = lat;

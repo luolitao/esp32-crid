@@ -1,7 +1,5 @@
 /**
- * crid_ota_web.h — Web OTA 更新服务模块头文件
- *
- * 提供基于HTTP的OTA更新功能，允许通过Web界面进行固件升级
+ * crid_ota_web.h — Web OTA 更新服务公共接口
  */
 
 #ifndef CRID_OTA_WEB_H
@@ -15,9 +13,18 @@
 extern "C" {
 #endif
 
-/**
- * OTA状态枚举
- */
+/* 版本与构建信息（由编译系统注入） */
+#ifndef CRID_VERSION_STRING
+#define CRID_VERSION_STRING "1.0.0"
+#endif
+#ifndef CRID_BUILD_DATE
+#define CRID_BUILD_DATE     __DATE__
+#endif
+#ifndef CRID_BUILD_TIME
+#define CRID_BUILD_TIME     __TIME__
+#endif
+
+/** OTA 状态枚举 */
 typedef enum {
     OTA_IDLE,
     OTA_STARTED,
@@ -26,70 +33,34 @@ typedef enum {
     OTA_FAILED
 } ota_state_t;
 
-/**
- * 初始化OTA Web服务
- * @return ESP_OK 成功，其他值表示失败
- */
+/* ---------- Web 服务器生命周期 ---------- */
+
+/** 启动 HTTP 服务器并注册所有路由 */
 esp_err_t crid_ota_web_init(void);
 
-/**
- * 反初始化OTA Web服务
- */
+/** 停止 HTTP 服务器 */
 void crid_ota_web_deinit(void);
 
-/**
- * 检查OTA是否正在进行
- * @return true 如果正在更新，false 否则
- */
+/* ---------- OTA 状态查询 ---------- */
+
+/** 正在执行 OTA 上传？ */
 bool crid_ota_is_in_progress(void);
 
-/**
- * 获取OTA更新进度百分比
- * @return 进度百分比 (0-100)
- */
+/** 上传进度百分比 (0-100) */
 int crid_ota_get_progress(void);
 
-/**
- * 获取当前OTA状态
- * @return 当前OTA状态
- */
+/** 当前 OTA 状态 */
 ota_state_t crid_ota_get_state(void);
 
-/**
- * 获取最后一次错误信息
- * @return 错误信息字符串
- */
-const char* crid_ota_get_last_error(void);
+/** 最近一次错误信息 */
+const char *crid_ota_get_last_error(void);
 
-/**
- * 设置预期的MD5校验值用于固件验证
- * @param md5 16字节的MD5哈希值，如果为NULL则禁用校验
- */
+/** 设置预期的 MD5 校验值（保留） */
 void crid_ota_set_expected_md5(const uint8_t *md5);
 
-/**
- * 获取当前系统状态信息
- * @return 系统状态JSON字符串
- */
-const char* crid_ota_get_system_status(void);
+/* ---------- 供路由注册使用的 OTA 处理函数 ---------- */
 
-/**
- * 获取当前无人机追踪信息
- * @return 无人机追踪状态JSON字符串
- */
-const char* crid_ota_get_uav_tracking_status(void);
-
-/**
- * 获取当前网络状态
- * @return 网络状态JSON字符串
- */
-const char* crid_ota_get_network_status(void);
-
-/**
- * 获取当前扫描统计信息
- * @return 扫描统计JSON字符串
- */
-const char* crid_ota_get_scan_stats(void);
+esp_err_t crid_ota_upload_handler(httpd_req_t *req);
 
 #ifdef __cplusplus
 }

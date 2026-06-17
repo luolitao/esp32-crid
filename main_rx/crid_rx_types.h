@@ -18,9 +18,7 @@
 #define CRID_VERSION_MAJOR     0
 #define CRID_VERSION_MINOR     1
 #define CRID_VERSION_PATCH     0
-#define CRID_VERSION_STRING    "0.1.0-dev"
-#define CRID_BUILD_DATE        __DATE__
-#define CRID_BUILD_TIME        __TIME__
+
 
 /* ================================================================
  * 协议标准 OUI 定义

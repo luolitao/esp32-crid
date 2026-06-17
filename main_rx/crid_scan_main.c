@@ -33,6 +33,7 @@
 #include "crid_display.h"
 #include "crid_json.h"
 #include "crid_ota_web.h"
+#include "crid_usb_net.h"
 
 /* ================================================================
  * UART 数据端口配置
@@ -279,7 +280,15 @@ void app_main(void) {
         return;
     }
 
-    // 5. 初始化 OTA Web 服务
+    // 5. 初始化 USB NCM 网络接口（用于 HTTP 访问）
+    ret = crid_usb_net_init();
+    if (ret != ESP_OK) {
+        json_warning("RID_MAIN", "USB NCM init failed!");
+    } else {
+        json_debug("RID_MAIN", "USB NCM network interface started");
+    }
+
+    // 6. 初始化 OTA Web 服务
     ret = crid_ota_web_init();
     if (ret != ESP_OK) {
         json_warning("RID_MAIN", "OTA Web init failed!");
@@ -287,7 +296,7 @@ void app_main(void) {
         json_debug("RID_MAIN", "OTA Web server started");
     }
 
-    // 6. 创建任务
+    // 7. 创建任务
     BaseType_t task_created;
 
     task_created = xTaskCreate(parser_task, "parser",
@@ -306,7 +315,7 @@ void app_main(void) {
 
     crid_sniffer_start_channel_hold();
 
-    // 7. 启动完成（调试流 → USB CDC）
+    // 8. 启动完成（调试流 → USB CDC）
     json_startup_banner(CRID_VERSION_STRING, CRID_BUILD_DATE, CRID_BUILD_TIME,
                         FIXED_CHANNEL, MAX_TRACKED_UAVS,
                         (uint32_t)esp_get_free_heap_size());
