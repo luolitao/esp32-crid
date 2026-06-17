@@ -2,7 +2,7 @@
  * crid_scan_main.c — Remote ID Scanner 主入口
  *
  * ESP32 Remote ID Scanner
- * Standards: ASTM F3411-22a / ASD-STAN prEN 4709-002 / GB 42590-2023 / GB 46750-2023
+ * Standards: ASTM F3411-22a / ASD-STAN prEN 4709-002 / GB 42590-2023 / GB 46750-2025
  *
  * 架构：
  *   - crid_sniffer:   Wi-Fi 混杂模式抓包，ISR 安全回调
@@ -23,6 +23,8 @@
 #include "esp_event.h"
 #include "driver/uart.h"
 #include "opendroneid.h"
+#include "esp_http_server.h"
+#include "esp_wifi.h"
 
 #include "crid_rx_types.h"
 #include "crid_sniffer.h"
@@ -30,6 +32,7 @@
 #include "crid_tracker.h"
 #include "crid_display.h"
 #include "crid_json.h"
+#include "crid_ota_web.h"
 
 /* ================================================================
  * UART 数据端口配置
@@ -276,7 +279,15 @@ void app_main(void) {
         return;
     }
 
-    // 5. 创建任务
+    // 5. 初始化 OTA Web 服务
+    ret = crid_ota_web_init();
+    if (ret != ESP_OK) {
+        json_warning("RID_MAIN", "OTA Web init failed!");
+    } else {
+        json_debug("RID_MAIN", "OTA Web server started");
+    }
+
+    // 6. 创建任务
     BaseType_t task_created;
 
     task_created = xTaskCreate(parser_task, "parser",
@@ -295,7 +306,7 @@ void app_main(void) {
 
     crid_sniffer_start_channel_hold();
 
-    // 6. 启动完成（调试流 → USB CDC）
+    // 7. 启动完成（调试流 → USB CDC）
     json_startup_banner(CRID_VERSION_STRING, CRID_BUILD_DATE, CRID_BUILD_TIME,
                         FIXED_CHANNEL, MAX_TRACKED_UAVS,
                         (uint32_t)esp_get_free_heap_size());

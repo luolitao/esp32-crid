@@ -2,7 +2,7 @@
  * crid_rx_types.h — 接收端公共类型定义与配置常量
  *
  * ESP32 Remote ID Scanner
- * Standards: ASTM F3411-22a / ASD-STAN prEN 4709-002 / GB 42590-2023 / GB 46750-2023
+ * Standards: ASTM F3411-22a / ASD-STAN prEN 4709-002 / GB 42590-2023 / GB 46750-2025
  */
 
 #ifndef CRID_RX_TYPES_H
@@ -25,7 +25,7 @@
 /* ================================================================
  * 协议标准 OUI 定义
  *
- * Wi-Fi Beacon 统一使用 FA:0B:BC（ASTM F3411-22a / ASD-STAN / GB 42590-2023 / GB 46750-2023）
+ * Wi-Fi Beacon 统一使用 FA:0B:BC（ASTM F3411-22a / ASD-STAN / GB 42590-2023 / GB 46750-2025）
  * ASTM 与国标在 Wire 格式上相同（OUI FA:0B:BC, Vendor Type 0x0D, Packed 消息格式），
  * 无法从数据字节直接区分协议类型。
  *
@@ -110,7 +110,7 @@ typedef enum {
     RID_PROTOCOL_ASTM_F3411 = 1,
     RID_PROTOCOL_ASD_STAN   = 2,
     RID_PROTOCOL_GB42590    = 3,   // 中国 GB 42590-2023
-    RID_PROTOCOL_GB46750    = 4,   // 中国 GB 46750-2023
+    RID_PROTOCOL_GB46750    = 4,   // 中国 GB 46750-2025
 } rid_protocol_t;
 
 /* ================================================================
@@ -184,7 +184,7 @@ typedef struct {
 } rid_basic_id_t;
 
 /* ================================================================
- * GB 46750-2023 专用数据结构
+ * GB 46750-2025 专用数据结构
  *
  * 数据标识位表定义了 21 个数据内容项（001-021），
  * 每个标识位为 1 表示对应数据项存在。
@@ -214,16 +214,16 @@ typedef struct {
     uint8_t  rcs_loc_type;            // 位置类型枚举
 
     bool     has_rcs_location;        // 006 遥控站位置 (M)
-    double   rcs_latitude;            // 遥控站纬度
-    double   rcs_longitude;           // 遥控站经度
+    float    rcs_latitude;            // 遥控站纬度
+    float    rcs_longitude;           // 遥控站经度
 
     bool     has_rcs_altitude;        // 007 遥控站高度 (M)
     float    rcs_altitude;            // 遥控站大地高度 (m)
 
     // --- 标识字节2 ---
     bool     has_uav_location;        // 008 民用无人驾驶航空器位置 (M)
-    double   uav_latitude;            // 无人机纬度
-    double   uav_longitude;           // 无人机经度
+    float    uav_latitude;            // 无人机纬度
+    float    uav_longitude;           // 无人机经度
 
     bool     has_track_angle;         // 009 航迹角 (M)
     float    track_angle;             // 航迹角 (0°~360°)
@@ -356,7 +356,7 @@ typedef struct {
     rid_self_id_t     self_id;          // Self-ID 描述
     rid_operator_id_t operator_id;      // 操作员 ID
 
-    // GB 46750-2023 专用数据
+    // GB 46750-2025 专用数据
     gb46750_data_t    gb46750;          // GB 46750 解析数据
 
     // 统计

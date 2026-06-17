@@ -8,73 +8,34 @@
  *
  * 设计：使用 rid_*_t 分层结构体（与 ODID_UAS_Data 解耦），
  *       所有枚举值通过 uint8_t 传递，映射表参照 ASTM F3411 / ORIP 标准。
+ *       共享枚举映射由 crid_enum_names.h (X-macro) 统一生成。
  */
 
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
-#include "esp_log.h"
+#include <esp_log.h>
 #include "crid_display.h"
-#include "opendroneid.h"  // 仅用于 ODID_* 枚举常量值引用
+#include "crid_enum_names.h"
+#include "opendroneid.h"  // 仅用于 decodeTimestampAccuracy 和 ODID_AUTH_MAX_PAGES 等常量
 
 static const char *TAG = "RID_DISP";
 
 /* ================================================================
- * 枚举值 → 可读名称映射表 (基于 rid_*_t 的 uint8_t 字段)
- * 参照 ASTM F3411 / ORIP types.h 完整枚举
+ * 共享枚举 → 可读名称映射 (由 crid_enum_names.h X-macro 生成)
  * ================================================================ */
 
-static const char *get_id_type_name(uint8_t t) {
-    switch (t) {
-        case ODID_IDTYPE_NONE:                return "None";
-        case ODID_IDTYPE_SERIAL_NUMBER:       return "Serial Number";
-        case ODID_IDTYPE_CAA_REGISTRATION_ID: return "CAA Registration ID";
-        case ODID_IDTYPE_UTM_ASSIGNED_UUID:   return "UTM Assigned UUID";
-        case ODID_IDTYPE_SPECIFIC_SESSION_ID: return "Specific Session ID";
-        default:                              return "Unknown";
-    }
-}
+ENUM_DISPLAY_FN(get_id_type_name,        ID_TYPE_MAP,    "Unknown")
+ENUM_DISPLAY_FN(get_ua_type_name,        UA_TYPE_MAP,    "Unknown")
+ENUM_DISPLAY_FN(get_status_name,         STATUS_MAP,     "Unknown")
+ENUM_DISPLAY_FN(get_height_ref_name,     HEIGHT_REF_MAP, "Unknown")
+ENUM_DISPLAY_FN(get_desc_type_name,      DESC_TYPE_MAP,  "Unknown")
+ENUM_DISPLAY_FN(get_operator_loc_name,   OPERATOR_LOC_MAP, "Unknown")
+ENUM_DISPLAY_FN(get_auth_type_name,      AUTH_TYPE_MAP,  "Unknown")
 
-static const char *get_ua_type_name(uint8_t t) {
-    switch (t) {
-        case ODID_UATYPE_NONE:                     return "None";
-        case ODID_UATYPE_AEROPLANE:                return "Aeroplane";
-        case ODID_UATYPE_HELICOPTER_OR_MULTIROTOR: return "Helicopter/Multirotor";
-        case ODID_UATYPE_GYROPLANE:                return "Gyroplane";
-        case ODID_UATYPE_HYBRID_LIFT:              return "Hybrid Lift";
-        case ODID_UATYPE_ORNITHOPTER:              return "Ornithopter";
-        case ODID_UATYPE_GLIDER:                   return "Glider";
-        case ODID_UATYPE_KITE:                     return "Kite";
-        case ODID_UATYPE_FREE_BALLOON:             return "Free Balloon";
-        case ODID_UATYPE_CAPTIVE_BALLOON:          return "Captive Balloon";
-        case ODID_UATYPE_AIRSHIP:                  return "Airship";
-        case ODID_UATYPE_FREE_FALL_PARACHUTE:      return "Free Fall/Parachute";
-        case ODID_UATYPE_ROCKET:                   return "Rocket";
-        case ODID_UATYPE_TETHERED_POWERED_AIRCRAFT: return "Tethered Powered";
-        case ODID_UATYPE_GROUND_OBSTACLE:          return "Ground Obstacle";
-        case ODID_UATYPE_OTHER:                    return "Other";
-        default:                                   return "Unknown";
-    }
-}
-
-static const char *get_status_name(uint8_t s) {
-    switch (s) {
-        case ODID_STATUS_UNDECLARED:                 return "Undeclared";
-        case ODID_STATUS_GROUND:                     return "Ground";
-        case ODID_STATUS_AIRBORNE:                   return "Airborne";
-        case ODID_STATUS_EMERGENCY:                  return "Emergency";
-        case ODID_STATUS_REMOTE_ID_SYSTEM_FAILURE:   return "RID System Failure";
-        default:                                     return "Unknown";
-    }
-}
-
-static const char *get_height_ref_name(uint8_t h) {
-    switch (h) {
-        case ODID_HEIGHT_REF_OVER_TAKEOFF: return "Over Takeoff";
-        case ODID_HEIGHT_REF_OVER_GROUND:  return "Over Ground";
-        default:                           return "Unknown";
-    }
-}
+/* ================================================================
+ * 显示专用枚举映射 (仅在 display 层使用)
+ * ================================================================ */
 
 static const char *get_horiz_acc_name(uint8_t a) {
     switch (a) {
@@ -119,15 +80,6 @@ static const char *get_speed_acc_name(uint8_t a) {
     }
 }
 
-static const char *get_desc_type_name(uint8_t d) {
-    switch (d) {
-        case ODID_DESC_TYPE_TEXT:            return "Text";
-        case ODID_DESC_TYPE_EMERGENCY:       return "Emergency";
-        case ODID_DESC_TYPE_EXTENDED_STATUS: return "Extended Status";
-        default:                             return "Unknown";
-    }
-}
-
 static const char *get_classification_name(uint8_t c) {
     switch (c) {
         case ODID_CLASSIFICATION_TYPE_UNDECLARED: return "Undeclared";
@@ -160,28 +112,6 @@ static const char *get_eu_class_name(uint8_t c) {
     }
 }
 
-static const char *get_operator_loc_name(uint8_t t) {
-    switch (t) {
-        case ODID_OPERATOR_LOCATION_TYPE_TAKEOFF:   return "Takeoff";
-        case ODID_OPERATOR_LOCATION_TYPE_LIVE_GNSS: return "Live GNSS";
-        case ODID_OPERATOR_LOCATION_TYPE_FIXED:     return "Fixed";
-        default:                                    return "Unknown";
-    }
-}
-
-static const char *get_auth_type_name(uint8_t a) {
-    switch (a) {
-        case ODID_AUTH_NONE:                       return "None";
-        case ODID_AUTH_UAS_ID_SIGNATURE:           return "UAS ID Signature";
-        case ODID_AUTH_OPERATOR_ID_SIGNATURE:      return "Operator ID Signature";
-        case ODID_AUTH_MESSAGE_SET_SIGNATURE:      return "Message Set Signature";
-        case ODID_AUTH_NETWORK_REMOTE_ID:          return "Network Remote ID";
-        case ODID_AUTH_SPECIFIC_AUTHENTICATION:    return "Specific Authentication";
-        default:                                   return "Unknown";
-    }
-}
-
-// 传输方式名称
 static const char *get_transport_name(uint8_t t) {
     switch (t) {
         case RID_TRANSPORT_BLUETOOTH_LEGACY:     return "BT Legacy";
@@ -192,7 +122,6 @@ static const char *get_transport_name(uint8_t t) {
     }
 }
 
-// 协议类型名称
 static const char *get_protocol_name(uint8_t p) {
     switch (p) {
         case RID_PROTOCOL_ASTM_F3411: return "ASTM F3411";
@@ -200,6 +129,28 @@ static const char *get_protocol_name(uint8_t p) {
         case RID_PROTOCOL_GB42590:    return "GB 42590";
         case RID_PROTOCOL_GB46750:    return "GB 46750";
         default:                      return "Unknown";
+    }
+}
+
+/* ================================================================
+ * 辅助函数：格式化浮点数输出，避免无意义的小数部分
+ * ================================================================ */
+static void format_float_buffer(char *buffer, size_t buffer_size, float value, int decimal_places) {
+    if (decimal_places == 0) {
+        snprintf(buffer, buffer_size, "%.0f", value);
+    } else {
+        snprintf(buffer, buffer_size, "%.*f", decimal_places, value);
+    }
+}
+
+/* ================================================================
+ * 辅助函数：获取位置坐标字符串
+ * ================================================================ */
+static void format_position_buffer(char *buffer, size_t buffer_size, double value, int decimal_places) {
+    if (decimal_places == 0) {
+        snprintf(buffer, buffer_size, "%.0f", value);
+    } else {
+        snprintf(buffer, buffer_size, "%.*f", decimal_places, value);
     }
 }
 
@@ -228,6 +179,13 @@ const char *crid_display_status_name(uint8_t s) {
  * ================================================================ */
 
 void crid_display_mac_str(const uint8_t *mac, char *buf, size_t size) {
+    if (!mac || !buf || size < 18) {
+        if (buf && size > 0) {
+            buf[0] = '\0';
+        }
+        return;
+    }
+
     snprintf(buf, size, "%02X:%02X:%02X:%02X:%02X:%02X",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
@@ -238,15 +196,26 @@ void crid_display_mac_str(const uint8_t *mac, char *buf, size_t size) {
  * ================================================================ */
 
 void crid_display_uav_summary(const uav_track_t *uav) {
+    if (!uav) {
+        ESP_LOGW(TAG, "Invalid UAV pointer in summary");
+        return;
+    }
+
     char mac_str[18];
     crid_display_mac_str(uav->mac, mac_str, sizeof(mac_str));
 
     if (uav->basic_id.valid && uav->location.valid) {
-        ESP_LOGI(TAG, "[%s] %s @ %.5f,%.5f alt=%.0fm spd=%.1fm/s rssi=%d",
+        char lat_buf[20], lon_buf[20], alt_buf[10], spd_buf[10];
+
+        format_position_buffer(lat_buf, sizeof(lat_buf), uav->location.latitude, 5);
+        format_position_buffer(lon_buf, sizeof(lon_buf), uav->location.longitude, 5);
+        format_float_buffer(alt_buf, sizeof(alt_buf), uav->location.altitude_baro, 0);
+        format_float_buffer(spd_buf, sizeof(spd_buf), uav->location.speed_horizontal, 1);
+
+        ESP_LOGI(TAG, "[%s] %s @ %s,%s alt=%sm spd=%s m/s rssi=%d",
                  mac_str, uav->basic_id.uas_id,
-                 uav->location.latitude, uav->location.longitude,
-                 uav->location.altitude_baro, uav->location.speed_horizontal,
-                 uav->last_rssi);
+                 lat_buf, lon_buf,
+                 alt_buf, spd_buf, uav->last_rssi);
     } else if (uav->basic_id.valid) {
         ESP_LOGI(TAG, "[%s] %s (no pos) rssi=%d",
                  mac_str, uav->basic_id.uas_id, uav->last_rssi);
@@ -261,14 +230,18 @@ void crid_display_uav_summary(const uav_track_t *uav) {
  * ================================================================ */
 
 static void print_basic_id(const uav_track_t *uav) {
-    // 分层视图：仅打印主 Basic ID
+    if (!uav) return;
+
     if (uav->basic_id.valid) {
         ESP_LOGI(TAG, "  Basic ID:");
         ESP_LOGI(TAG, "    ID Type: %s", get_id_type_name(uav->basic_id.id_type));
         ESP_LOGI(TAG, "    UA Type: %s", get_ua_type_name(uav->basic_id.ua_type));
         ESP_LOGI(TAG, "    UAS ID:  '%s'", uav->basic_id.uas_id);
     }
-    // 也打印额外的 Basic ID (index 1+)
+
+    /* GB 46750 协议没有 ASTM 多消息 Basic ID，跳过 */
+    if (uav->protocol == RID_PROTOCOL_GB46750 && uav->gb46750.valid) return;
+
     for (int i = 1; i < ODID_BASIC_ID_MAX_MESSAGES; i++) {
         if (!uav->uas_data.BasicIDValid[i]) continue;
         const ODID_BasicID_data *b = &uav->uas_data.BasicID[i];
@@ -280,19 +253,26 @@ static void print_basic_id(const uav_track_t *uav) {
 }
 
 static void print_location(const uav_track_t *uav) {
-    if (!uav->location.valid) return;
+    if (!uav || !uav->location.valid) return;
+
+    char speed_h_buf[10], speed_v_buf[10], lat_buf[20], lon_buf[20];
+
+    format_float_buffer(speed_h_buf, sizeof(speed_h_buf), uav->location.speed_horizontal, 2);
+    format_float_buffer(speed_v_buf, sizeof(speed_v_buf), uav->location.speed_vertical, 2);
+    format_position_buffer(lat_buf, sizeof(lat_buf), uav->location.latitude, 7);
+    format_position_buffer(lon_buf, sizeof(lon_buf), uav->location.longitude, 7);
 
     ESP_LOGI(TAG, "  Location:");
     ESP_LOGI(TAG, "    Status:      %s", get_status_name(uav->location.status));
-    ESP_LOGI(TAG, "    Latitude:    %.7f°", uav->location.latitude);
-    ESP_LOGI(TAG, "    Longitude:   %.7f°", uav->location.longitude);
+    ESP_LOGI(TAG, "    Latitude:    %s°", lat_buf);
+    ESP_LOGI(TAG, "    Longitude:   %s°", lon_buf);
     ESP_LOGI(TAG, "    Alt Baro:    %.1f m", uav->location.altitude_baro);
     ESP_LOGI(TAG, "    Alt Geo:     %.1f m", uav->location.altitude_geo);
     ESP_LOGI(TAG, "    Height AGL:  %.1f m (%s)",
              uav->location.height, get_height_ref_name(uav->location.height_ref));
     ESP_LOGI(TAG, "    Direction:   %.1f°", uav->location.direction);
-    ESP_LOGI(TAG, "    Speed H:     %.2f m/s", uav->location.speed_horizontal);
-    ESP_LOGI(TAG, "    Speed V:     %.2f m/s", uav->location.speed_vertical);
+    ESP_LOGI(TAG, "    Speed H:     %s m/s", speed_h_buf);
+    ESP_LOGI(TAG, "    Speed V:     %s m/s", speed_v_buf);
     ESP_LOGI(TAG, "    Accuracy:");
     ESP_LOGI(TAG, "      Horiz: %s, Vert: %s, Baro: %s, Speed: %s",
              get_horiz_acc_name(uav->location.h_accuracy),
@@ -300,16 +280,22 @@ static void print_location(const uav_track_t *uav) {
              get_vert_acc_name(uav->location.baro_accuracy),
              get_speed_acc_name(uav->location.speed_accuracy));
     ESP_LOGI(TAG, "    Timestamp:   %.1f s (accuracy: %.1f s)",
-             uav->location.timestamp, decodeTimestampAccuracy((ODID_Timestamp_accuracy_t)uav->location.ts_accuracy));
+             uav->location.timestamp,
+             decodeTimestampAccuracy((ODID_Timestamp_accuracy_t)uav->location.ts_accuracy));
 }
 
 static void print_system(const uav_track_t *uav) {
-    if (!uav->system.valid) return;
+    if (!uav || !uav->system.valid) return;
+
+    char op_lat_buf[20], op_lon_buf[20];
+
+    format_position_buffer(op_lat_buf, sizeof(op_lat_buf), uav->system.operator_latitude, 7);
+    format_position_buffer(op_lon_buf, sizeof(op_lon_buf), uav->system.operator_longitude, 7);
 
     ESP_LOGI(TAG, "  System:");
     ESP_LOGI(TAG, "    Operator Location: %s", get_operator_loc_name(uav->system.operator_location_type));
-    ESP_LOGI(TAG, "    Operator Position: %.7f°, %.7f°",
-             uav->system.operator_latitude, uav->system.operator_longitude);
+    ESP_LOGI(TAG, "    Operator Position: %s°, %s°",
+             op_lat_buf, op_lon_buf);
     ESP_LOGI(TAG, "    Operator Alt Geo: %.1f m", uav->system.operator_altitude_geo);
     ESP_LOGI(TAG, "    Classification:   %s", get_classification_name(uav->system.classification_type));
     if (uav->system.classification_type == ODID_CLASSIFICATION_TYPE_EU) {
@@ -323,18 +309,20 @@ static void print_system(const uav_track_t *uav) {
 }
 
 static void print_self_id(const uav_track_t *uav) {
-    if (!uav->self_id.valid) return;
+    if (!uav || !uav->self_id.valid) return;
     ESP_LOGI(TAG, "  Self ID: %s - '%s'",
              get_desc_type_name(uav->self_id.description_type), uav->self_id.description);
 }
 
 static void print_operator_id(const uav_track_t *uav) {
-    if (!uav->operator_id.valid) return;
+    if (!uav || !uav->operator_id.valid) return;
     ESP_LOGI(TAG, "  Operator ID: Type=%d, ID='%s'",
              uav->operator_id.id_type, uav->operator_id.id);
 }
 
 static void print_auth(const uav_track_t *uav) {
+    if (!uav) return;
+
     for (int i = 0; i < ODID_AUTH_MAX_PAGES; i++) {
         if (!uav->uas_data.AuthValid[i]) continue;
         const ODID_Auth_data *a = &uav->uas_data.Auth[i];
@@ -346,7 +334,8 @@ static void print_auth(const uav_track_t *uav) {
 }
 
 static void print_gb46750(const uav_track_t *uav) {
-    if (!uav->gb46750.valid) return;
+    if (!uav || !uav->gb46750.valid) return;
+
     const gb46750_data_t *gb = &uav->gb46750;
 
     ESP_LOGI(TAG, "  GB 46750 Data:");
@@ -367,31 +356,43 @@ static void print_gb46750(const uav_track_t *uav) {
         ESP_LOGI(TAG, "    RCS Loc Type:   %u", gb->rcs_loc_type);
     }
     if (gb->has_rcs_location) {
-        ESP_LOGI(TAG, "    RCS Position:   %.7f°, %.7f°", gb->rcs_latitude, gb->rcs_longitude);
+        char rcs_lat_buf[20], rcs_lon_buf[20];
+        format_position_buffer(rcs_lat_buf, sizeof(rcs_lat_buf), gb->rcs_latitude, 7);
+        format_position_buffer(rcs_lon_buf, sizeof(rcs_lon_buf), gb->rcs_longitude, 7);
+        ESP_LOGI(TAG, "    RCS Position:   %s°, %s°",
+                 rcs_lat_buf, rcs_lon_buf);
     }
     if (gb->has_rcs_altitude) {
-        ESP_LOGI(TAG, "    RCS Altitude:   %.1f m", gb->rcs_altitude);
+        ESP_LOGI(TAG, "    RCS Altitude:   %.1f m", (double)gb->rcs_altitude);
     }
     if (gb->has_uav_location) {
-        ESP_LOGI(TAG, "    UAV Position:   %.7f°, %.7f°", gb->uav_latitude, gb->uav_longitude);
+        char uav_lat_buf[20], uav_lon_buf[20];
+        format_position_buffer(uav_lat_buf, sizeof(uav_lat_buf), gb->uav_latitude, 7);
+        format_position_buffer(uav_lon_buf, sizeof(uav_lon_buf), gb->uav_longitude, 7);
+        ESP_LOGI(TAG, "    UAV Position:   %s°, %s°",
+                 uav_lat_buf, uav_lon_buf);
     }
     if (gb->has_track_angle) {
-        ESP_LOGI(TAG, "    Track Angle:    %.1f°", gb->track_angle);
+        ESP_LOGI(TAG, "    Track Angle:    %.1f°", (double)gb->track_angle);
     }
     if (gb->has_ground_speed) {
-        ESP_LOGI(TAG, "    Ground Speed:   %.2f m/s", gb->ground_speed);
+        char speed_buf[10];
+        format_float_buffer(speed_buf, sizeof(speed_buf), gb->ground_speed, 2);
+        ESP_LOGI(TAG, "    Ground Speed:   %s m/s", speed_buf);
     }
     if (gb->has_relative_height) {
-        ESP_LOGI(TAG, "    Rel Height:     %.1f m", gb->relative_height);
+        ESP_LOGI(TAG, "    Rel Height:     %.1f m", (double)gb->relative_height);
     }
     if (gb->has_vertical_speed) {
-        ESP_LOGI(TAG, "    Vertical Speed: %.2f m/s", gb->vertical_speed);
+        char speed_buf[10];
+        format_float_buffer(speed_buf, sizeof(speed_buf), gb->vertical_speed, 2);
+        ESP_LOGI(TAG, "    Vertical Speed: %s m/s", speed_buf);
     }
     if (gb->has_geo_altitude) {
-        ESP_LOGI(TAG, "    Geo Altitude:   %.1f m", gb->geo_altitude);
+        ESP_LOGI(TAG, "    Geo Altitude:   %.1f m", (double)gb->geo_altitude);
     }
     if (gb->has_baro_altitude) {
-        ESP_LOGI(TAG, "    Baro Altitude:  %.1f m", gb->baro_altitude);
+        ESP_LOGI(TAG, "    Baro Altitude:  %.1f m", (double)gb->baro_altitude);
     }
     if (gb->has_operation_status) {
         ESP_LOGI(TAG, "    Op Status:      %u", gb->operation_status);
@@ -421,6 +422,11 @@ static void print_gb46750(const uav_track_t *uav) {
 }
 
 void crid_display_uav_detail(const uav_track_t *uav) {
+    if (!uav) {
+        ESP_LOGW(TAG, "Invalid UAV pointer in detail");
+        return;
+    }
+
     char mac_str[18];
     crid_display_mac_str(uav->mac, mac_str, sizeof(mac_str));
 
@@ -431,13 +437,18 @@ void crid_display_uav_detail(const uav_track_t *uav) {
     ESP_LOGI(TAG, "  Transport: %s, Protocol: %s",
              get_transport_name(uav->transport), get_protocol_name(uav->protocol));
 
-    print_basic_id(uav);
-    print_location(uav);
-    print_system(uav);
-    print_self_id(uav);
-    print_operator_id(uav);
-    print_auth(uav);
-    print_gb46750(uav);
+    /* GB 46750 协议：显示 GB 原始数据，跳过 ASTM 统一视图 */
+    if (uav->protocol == RID_PROTOCOL_GB46750 && uav->gb46750.valid) {
+        print_basic_id(uav);
+        print_gb46750(uav);
+    } else {
+        print_basic_id(uav);
+        print_location(uav);
+        print_system(uav);
+        print_self_id(uav);
+        print_operator_id(uav);
+        print_auth(uav);
+    }
 
     ESP_LOGI(TAG, "========================================");
 }
@@ -447,25 +458,45 @@ void crid_display_uav_detail(const uav_track_t *uav) {
  * ================================================================ */
 
 void crid_display_uav_status(const uav_track_t *uav) {
+    if (!uav) {
+        ESP_LOGW(TAG, "Invalid UAV pointer in status");
+        return;
+    }
+
     char mac_str[18];
     crid_display_mac_str(uav->mac, mac_str, sizeof(mac_str));
+
+    if (!uav->last_seen_ms) {
+        ESP_LOGW(TAG, "Invalid timestamp in status");
+        return;
+    }
+
     uint32_t age_ms = esp_log_timestamp() - uav->last_seen_ms;
+    char age_seconds[10];
+    snprintf(age_seconds, sizeof(age_seconds), "%lus", (unsigned long)(age_ms / 1000));
 
     if (uav->basic_id.valid && uav->location.valid) {
-        ESP_LOGI(TAG, "  [%s] %s @ %.5f,%.5f (%.0fm, %.1fm/s) %s %lus ago",
+        char lat_buf[20], lon_buf[20], alt_buf[10], spd_buf[10];
+
+        format_position_buffer(lat_buf, sizeof(lat_buf), uav->location.latitude, 5);
+        format_position_buffer(lon_buf, sizeof(lon_buf), uav->location.longitude, 5);
+        format_float_buffer(alt_buf, sizeof(alt_buf), uav->location.altitude_baro, 0);
+        format_float_buffer(spd_buf, sizeof(spd_buf), uav->location.speed_horizontal, 1);
+
+        ESP_LOGI(TAG, "  [%s] %s @ %s,%s (%sm, %s m/s) %s %s ago",
                  mac_str, uav->basic_id.uas_id,
-                 uav->location.latitude, uav->location.longitude,
-                 uav->location.altitude_baro, uav->location.speed_horizontal,
+                 lat_buf, lon_buf,
+                 alt_buf, spd_buf,
                  get_transport_name(uav->transport),
-                 (unsigned long)(age_ms / 1000));
+                 age_seconds);
     } else if (uav->basic_id.valid) {
-        ESP_LOGI(TAG, "  [%s] %s (no location) %s %lus ago",
+        ESP_LOGI(TAG, "  [%s] %s (no location) %s %s ago",
                  mac_str, uav->basic_id.uas_id,
                  get_transport_name(uav->transport),
-                 (unsigned long)(age_ms / 1000));
+                 age_seconds);
     } else {
-        ESP_LOGI(TAG, "  [%s] (no ID) %s %lus ago",
+        ESP_LOGI(TAG, "  [%s] (no ID) %s %s ago",
                  mac_str, get_transport_name(uav->transport),
-                 (unsigned long)(age_ms / 1000));
+                 age_seconds);
     }
 }

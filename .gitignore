@@ -18,4 +18,6 @@ sdkconfig.defaults
 .DS_Store
 Thumbs.db
 
-tools/esp32/
+tools/.venv/
+__pycache__/
+*.pyc

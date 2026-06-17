@@ -1,5 +1,7 @@
 /**
- * crid_parser.h — Remote ID 消息解析模块接口
+ * crid_parser.h — 协议解析模块头文件
+ *
+ * 包含所有协议相关的函数声明
  */
 
 #ifndef CRID_PARSER_H
@@ -12,18 +14,44 @@ extern "C" {
 #endif
 
 /**
- * 使用 opendroneid 库解码一条消息（支持 Message Pack 和单消息格式）
- * @param uav   目标无人机追踪条目
- * @param data  原始数据
- * @param len   数据长度
- * @return      检测到的协议类型（RID_PROTOCOL_UNKNOWN 表示解码失败）
+ * 解析并判断协议类型
+ * @param uav 无人机追踪结构体
+ * @param data 数据指针
+ * @param len 数据长度
+ * @return 协议类型
  */
 rid_protocol_t crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t len);
 
 /**
- * 从 ODID_UAS_Data 提取数据到分层结构体 (rid_location_t 等)
- * 应在每次解码成功后调用，供显示层使用
- * @param uav  目标无人机追踪条目
+ * 从原始数据解析 GB 46750 协议
+ * @param uav 无人机追踪结构体
+ * @param data 数据指针
+ * @param len 数据长度
+ * @return 是否成功解析
+ */
+bool crid_parser_decode_gb46750(uav_track_t *uav, const uint8_t *data, uint8_t len);
+
+/**
+ * 从原始数据解析 ASTM F3411 协议
+ * @param uav 无人机追踪结构体
+ * @param data 数据指针
+ * @param len 数据长度
+ * @return 是否成功解析
+ */
+bool crid_parser_decode_astm(uav_track_t *uav, const uint8_t *data, uint8_t len);
+
+/**
+ * 从原始数据解析 GB 42590 协议
+ * @param uav 无人机追踪结构体
+ * @param data 数据指针
+ * @param len 数据长度
+ * @return 是否成功解析
+ */
+bool crid_parser_decode_gb42590(uav_track_t *uav, const uint8_t *data, uint8_t len);
+
+/**
+ * 提取分层数据
+ * @param uav 无人机追踪结构体
  */
 void crid_parser_extract_layered(uav_track_t *uav);
 
