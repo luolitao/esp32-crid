@@ -18,7 +18,7 @@ static const char *TAG = "RID_GB42590";
  * 常量与宏定义
  * ================================================================ */
 #define GB42590_MAGIC           0xF1
-#define GB42590_HEADER_LEN      4   /* Counter(1)+Magic(1)+Size(1)+Count(1) */
+#define GB42590_HEADER_LEN      3   /* Magic(1)+Size(1)+Count(1) - payload 不再包含 Counter */
 #define ASTM_MSG_SIZE           25
 #define ASTM_PACK_MAX_MSGS      ODID_PACK_MAX_MESSAGES
 
@@ -40,14 +40,15 @@ static inline int32_t le32s(const uint8_t *p) {
 static bool decode_gb_format(uav_track_t *uav, const uint8_t *data, uint8_t len) {
     if (len < GB42590_HEADER_LEN) return false;
 
-    uint8_t gb_single_msg_size = data[2];
-    uint8_t gb_msg_count       = data[3];
+    /* payload 结构: [Magic(0xF1)][Size(1)][Count(1)][Messages...] */
+    uint8_t gb_single_msg_size = data[1];
+    uint8_t gb_msg_count       = data[2];
     if (gb_single_msg_size != ASTM_MSG_SIZE || gb_msg_count < 1 || gb_msg_count > ASTM_PACK_MAX_MSGS) {
         return false;
     }
 
-    const uint8_t *gb_messages     = &data[4];
-    uint8_t gb_msg_data_len        = len - 4;
+    const uint8_t *gb_messages     = &data[3];
+    uint8_t gb_msg_data_len        = len - 3;
     uint8_t gb_expected_len        = gb_msg_count * ASTM_MSG_SIZE;
     if (gb_msg_data_len < gb_expected_len) return false;
 
@@ -78,7 +79,7 @@ bool crid_parser_decode_gb42590(uav_track_t *uav, const uint8_t *data, uint8_t l
     if (!data || len < 1) return false;
 
     /* 策略 3: GB 42590-2023 */
-    if (len >= GB42590_HEADER_LEN && data[1] == GB42590_MAGIC) {
+    if (len >= GB42590_HEADER_LEN && data[0] == GB42590_MAGIC) {
         if (decode_gb_format(uav, data, len)) {
             return true;
         }

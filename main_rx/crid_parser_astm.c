@@ -11,6 +11,10 @@
 #include "crid_json.h"
 #include "crid_rx_types.h"
 
+static const char *TAG = "RID_ASTM";
+
+#define ASTM_MAGIC              0xF2
+#define ASTM_HEADER_LEN         3   /* Magic(1)+Size(1)+Count(1) - payload 不再包含 Counter */
 #define ASTM_MSG_SIZE           25
 #define ASTM_PACK_MAX_MSGS      ODID_PACK_MAX_MESSAGES
 
@@ -38,23 +42,20 @@ bool crid_parser_decode_astm(uav_track_t *uav, const uint8_t *data, uint8_t len)
     if (!data || len < 1) return false;
 
     /* 策略 2: ASTM F3411 Packed 格式 */
-    if (len > 1) {
-        const uint8_t *pack_data = &data[1];
-        uint8_t proto_msg_type   = pack_data[0];
-        if (((proto_msg_type >> 4) & 0x0F) == ODID_MESSAGETYPE_PACKED) {
-            uint8_t msg_count = pack_data[2];
-            size_t pack_size  = sizeof(ODID_MessagePack_encoded) -
-                                ASTM_MSG_SIZE * (ASTM_PACK_MAX_MSGS - msg_count);
-            if (len - 1 >= pack_size) {
-                int ret = odid_message_process_pack(&uav->uas_data, (uint8_t *)pack_data, len - 1);
-                if (ret > 0) {
-                    return true;
-                }
+    /* payload 结构: [Magic(0xF2)][Size(1)][Count(1)][Messages...] */
+    if (len >= ASTM_HEADER_LEN && data[0] == ASTM_MAGIC) {
+        uint8_t msg_count = data[2];
+        size_t pack_size  = sizeof(ODID_MessagePack_encoded) -
+                            ASTM_MSG_SIZE * (ASTM_PACK_MAX_MSGS - msg_count);
+        if (len >= pack_size) {
+            int ret = odid_message_process_pack(&uav->uas_data, (uint8_t *)data, len);
+            if (ret > 0) {
+                return true;
             }
         }
     }
 
-    /* 策略 4: ASTM 单消息格式 (Fallback) */
+    /* 策略 4: ASTM 单消息格式 (Fallback) - 直接从 data[0] 开始 */
     {
         ODID_messagetype_t t0 = decodeMessageType(data[0]);
         if (t0 >= ODID_MESSAGETYPE_BASIC_ID && t0 <= ODID_MESSAGETYPE_OPERATOR_ID) {

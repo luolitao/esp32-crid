@@ -12,6 +12,8 @@
 #include "crid_json.h"
 #include "crid_rx_types.h"
 
+static const char *TAG = "PARSER_RID";
+
 /*
  * Debug 开关：设为 1 时，在解析前打印原始数据十六进制转储
  * ================================================================ */
@@ -46,6 +48,9 @@ static void hex_dump(const char *tag, const char *prefix, const uint8_t *data, u
  * ================================================================ */
 rid_protocol_t crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t len) {
     if (!data || len < 1) return RID_PROTOCOL_UNKNOWN;
+    #if PARSER_DEBUG_HEX_DUMP
+    hex_dump(TAG,"Beacon Payload HEX", data, len);
+    #endif
 
     /* 解析并判断协议类型 */
 
@@ -54,14 +59,14 @@ rid_protocol_t crid_parser_decode(uav_track_t *uav, const uint8_t *data, uint8_t
         return RID_PROTOCOL_GB46750;
     }
 
-    // 尝试解析 ASTM F3411 协议
-    if (crid_parser_decode_astm(uav, data, len)) {
-        return RID_PROTOCOL_ASTM_F3411;
-    }
-
     // 尝试解析 GB 42590 协议
     if (crid_parser_decode_gb42590(uav, data, len)) {
         return RID_PROTOCOL_GB42590;
+    }
+
+    // 尝试解析 ASTM F3411 协议
+    if (crid_parser_decode_astm(uav, data, len)) {
+        return RID_PROTOCOL_ASTM_F3411;
     }
 
     /* 解析失败统计 */

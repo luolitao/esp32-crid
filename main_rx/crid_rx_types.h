@@ -50,6 +50,7 @@
 #define OUI_BLE_1  0xFF
 #define OUI_BLE_2  0xFA
 
+
 // ---- 厂商扩展 OUI ----
 // DJI 厂商
 #define OUI_DJI_60_0  0x60
@@ -62,6 +63,7 @@
 #define OUI_DJI_34_1  0xD2
 #define OUI_DJI_34_2  0x62
 
+
 // 判断是否为任一 Remote ID OUI
 // 注：Wi-Fi Beacon 标准 OUI 统一为 FA:0B:BC（ASTM / ASD-STAN / GB 42590 均使用此 OUI）
 #define IS_RID_OUI(o0, o1, o2) \
@@ -70,7 +72,7 @@
      ((o0) == OUI_BLE_0      && (o1) == OUI_BLE_1      && (o2) == OUI_BLE_2)      || \
      ((o0) == OUI_DJI_60_0   && (o1) == OUI_DJI_60_1   && (o2) == OUI_DJI_60_2)   || \
      ((o0) == OUI_DJI_48_0   && (o1) == OUI_DJI_48_1   && (o2) == OUI_DJI_48_2)   || \
-     ((o0) == OUI_DJI_34_0   && (o1) == OUI_DJI_34_1   && (o2) == OUI_DJI_34_2))
+     ((o0) == OUI_DJI_34_0   && (o1) == OUI_DJI_34_1   && (o2) == OUI_DJI_34_2)) 
 
 // 根据 OUI 获取传输类型
 #define GET_RID_TRANSPORT(o0, o1, o2) \
