@@ -48,10 +48,6 @@ static const char *TAG = "RID_Parser";
 
 /* 安全偏移：边界检查由每个 case 显式处理，不使用宏 */
 
-/* 字段提取宏：简化 crid_parser_extract_layered */
-#define EXTRACT_IF(valid_flag, dst, src) \
-    do { if (valid_flag) { (dst) = (src); } } while(0)
-
 /* ================================================================
  * Debug 辅助：十六进制转储
  * ================================================================ */

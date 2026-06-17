@@ -12,9 +12,7 @@
 #include "crid_json.h"
 #include "crid_rx_types.h"
 
-static const char *TAG = "RID_Common";
-
-/* ================================================================
+/*
  * Debug 开关：设为 1 时，在解析前打印原始数据十六进制转储
  * ================================================================ */
 #ifndef PARSER_DEBUG_HEX_DUMP

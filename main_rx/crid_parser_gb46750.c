@@ -31,10 +31,6 @@ static const char *TAG = "RID_GB46750";
 #define IS_VALID_ANGLE(angle)   ((angle) >= 0.0f && (angle) < 360.0f)
 #define IS_VALID_HEIGHT(h)      ((h) >= -1000.0f && (h) <= 10000.0f)
 
-/* 字段提取宏：简化 crid_parser_extract_layered */
-#define EXTRACT_IF(valid_flag, dst, src) \
-    do { if (valid_flag) { (dst) = (src); } } while(0)
-
 /* ================================================================
  * 内部辅助函数
  * ================================================================ */

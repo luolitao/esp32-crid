@@ -9,6 +9,10 @@
 
 #include "crid_rx_types.h"
 
+/* 字段提取宏：简化 crid_parser_extract_layered */
+#define EXTRACT_IF(valid_flag, dst, src) \
+    do { if (valid_flag) { (dst) = (src); } } while(0)
+
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -2,19 +2,25 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
+#include <esp_http_server.h>
+#include <esp_ota_ops.h>
+#include <esp_timer.h>
+#include <esp_chip_info.h>
+#include <nvs_flash.h>
+#include <esp_mac.h>
+#include <esp_app_desc.h>
+#include <esp_log.h>
+#include <esp_wifi.h>   
+
+#include "cJSON.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
-#include "esp_wifi.h"
-#include "esp_http_server.h"
-#include "esp_log.h"
-#include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "nvs.h"
-#include "nvs_flash.h"
-#include "esp_chip_info.h"
-#include "esp_flash.h"
 #include "esp_netif.h"
+
+#include <time.h>
 #include "crid_ota_web.h"
 #include "crid_rx_types.h"
 #include "crid_tracker.h"
@@ -25,15 +31,6 @@ static const char *TAG = "OTA_WEB";
 
 /* HTTP Server handle */
 static httpd_handle_t g_httpd_handle = NULL;
-
-/* OTA Update State */
-typedef enum {
-    OTA_IDLE,
-    OTA_STARTED,
-    OTA_IN_PROGRESS,
-    OTA_COMPLETED,
-    OTA_FAILED
-} ota_state_t;
 
 static ota_state_t g_ota_state = OTA_IDLE;
 static int g_ota_update_size = 0;
@@ -50,7 +47,7 @@ static esp_err_t ota_handler(httpd_req_t *req)
     /* Check if request is multipart form data */
     char content_type[256];
     size_t content_type_len = sizeof(content_type);
-    err = httpd_req_get_hdr_value_str(req, "Content-Type", content_type, &content_type_len);
+    err = httpd_req_get_hdr_value_str(req, "Content-Type", content_type, content_type_len);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to get Content-Type header");
         return httpd_resp_send_500(req);
@@ -59,13 +56,14 @@ static esp_err_t ota_handler(httpd_req_t *req)
     /* Check if it's multipart form data */
     if (strstr(content_type, "multipart/form-data") == NULL) {
         ESP_LOGE(TAG, "Not multipart/form-data");
-        return httpd_resp_send_400(req);
+        httpd_resp_set_status(req, "400 Bad Request");
+        return httpd_resp_send(req, "Bad Request", HTTPD_RESP_USE_STRLEN);
     }
 
     /* Get the size of the firmware image */
     char content_length[32];
     size_t content_length_len = sizeof(content_length);
-    err = httpd_req_get_hdr_value_str(req, "Content-Length", content_length, &content_length_len);
+    err = httpd_req_get_hdr_value_str(req, "Content-Length", content_length, content_length_len);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to get Content-Length header");
         return httpd_resp_send_500(req);
@@ -74,7 +72,8 @@ static esp_err_t ota_handler(httpd_req_t *req)
     int fw_size = atoi(content_length);
     if (fw_size <= 0) {
         ESP_LOGE(TAG, "Invalid firmware size: %d", fw_size);
-        return httpd_resp_send_400(req);
+        httpd_resp_set_status(req, "400 Bad Request");
+        return httpd_resp_send(req, "Bad Request", HTTPD_RESP_USE_STRLEN);
     }
 
     ESP_LOGI(TAG, "OTA update started, firmware size: %d bytes", fw_size);
@@ -503,9 +502,9 @@ static esp_err_t system_info_handler(httpd_req_t *req)
         "\"chip_model\": \"%s\","
         "\"chip_revision\": %d,"
         "\"chip_cores\": %d,"
-        "\"flash_size\": %u,"
-        "\"free_heap\": %u,"
-        "\"min_free_heap\": %u,"
+        "\"flash_size\": %lu,"
+        "\"free_heap\": %lu,"
+        "\"min_free_heap\": %lu,"
         "\"version\": \"%s\","
         "\"build_date\": \"%s\","
         "\"build_time\": \"%s\""
@@ -551,11 +550,11 @@ static esp_err_t device_status_handler(httpd_req_t *req)
     // Format JSON response
     snprintf(json_response, sizeof(json_response),
         "{"
-        "\"uptime_seconds\": %u,"
+        "\"uptime_seconds\": %lu,"
         "\"wifi_ssid\": \"%s\","
         "\"wifi_rssi\": %d,"
-        "\"heap_free\": %u,"
-        "\"heap_min_free\": %u"
+        "\"heap_free\": %lu,"
+        "\"heap_min_free\": %lu"
         "}",
         uptime_seconds,
         ssid,
@@ -629,10 +628,10 @@ static esp_err_t system_status_handler(httpd_req_t *req)
             "\"chip_model\": \"%s\","
             "\"chip_revision\": %d,"
             "\"chip_cores\": %d,"
-            "\"free_heap\": %u,"
-            "\"min_free_heap\": %u,"
-            "\"total_heap\": %u,"
-            "\"uptime_seconds\": %u,"
+            "\"free_heap\": %lu,"
+            "\"min_free_heap\": %lu,"
+            "\"total_heap\": %lu,"
+            "\"uptime_seconds\": %lu,"
             "\"version\": \"%s\","
             "\"build_date\": \"%s\","
             "\"build_time\": \"%s\""
@@ -726,8 +725,8 @@ static esp_err_t uav_tracking_handler(httpd_req_t *req)
                     "\"ua_type\":\"%s\","
                     "\"uas_id\":\"%s\""
                     "}",
-                    get_id_type_name(table[i].basic_id.id_type),
-                    get_ua_type_name(table[i].basic_id.ua_type),
+                    crid_display_ua_type_name(table[i].basic_id.id_type),
+                    crid_display_ua_type_name(table[i].basic_id.ua_type),
                     table[i].basic_id.uas_id);
             }
 
@@ -807,7 +806,7 @@ static esp_err_t network_status_handler(httpd_req_t *req)
             "\"ip_address\":\"" IPSTR "\","
             "\"gateway\":\"%s\","
             "\"netmask\":\"%s\","
-            "\"timestamp\":%ld"
+            "\"timestamp\":%lld"
         "}"
         "}",
         ssid,
