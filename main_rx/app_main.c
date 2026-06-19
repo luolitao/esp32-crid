@@ -33,7 +33,7 @@
 #include "crid_display.h"
 #include "crid_json.h"
 #include "crid_ota_web.h"
-#include "crid_usb_net.h"
+// #include "crid_usb_net.h"
 
 /* ================================================================
  * UART 数据端口配置
@@ -281,13 +281,13 @@ void app_main(void) {
     }
 
     // 5. 初始化 USB NCM 网络接口（用于 HTTP 访问）
-    ret = crid_usb_net_init();
+/*ret = crid_usb_net_init();
     if (ret != ESP_OK) {
         json_warning("RID_MAIN", "USB NCM init failed!");
     } else {
         json_debug("RID_MAIN", "USB NCM network interface started");
     }
-
+*/ 
     // 6. 初始化 OTA Web 服务
     ret = crid_ota_web_init();
     if (ret != ESP_OK) {
